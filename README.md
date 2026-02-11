@@ -6,7 +6,8 @@ Previously, a powerful editor was an extension to dual panel file manager. VSCom
 
 The goal of the project - to preserve the natural look and feel of File Manager while extending its functionality when plactical, and adding support of modern *nix and Windows-compatible operating systems in mind.
 
-<img src="/demo/vscommander.gif?raw=true" width="200px">
+![VSCommander Screenshot](https://raw.githubusercontent.com/vmisoft/vscommander/refs/heads/master/demo/screenshot.png)
+
 
 The project is a work in progress and not published to the marketplace yet.
 
@@ -77,3 +78,5 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 ## License
 
 MIT
+
+![VSCommander Demo](https://raw.githubusercontent.com/vmisoft/vscommander/refs/heads/master/demo/vscommander.gif)

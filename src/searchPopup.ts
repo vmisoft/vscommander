@@ -1,7 +1,8 @@
-import { hideCursor } from './draw';
+import { hideCursor, moveTo, resetStyle, DBOX } from './draw';
 import { Theme } from './settings';
 import { DirEntry } from './types';
 import { Popup, PopupInputResult } from './popup';
+import { applyStyle } from './helpers';
 
 const POPUP_WIDTH = 20;
 const INPUT_WIDTH = POPUP_WIDTH - 4;
@@ -71,14 +72,17 @@ export class SearchPopup extends Popup {
         const t = theme;
         const popupCol = anchorCol + POPUP_COL_OFFSET;
         const popupRow = anchorRow;
+        const border = applyStyle(t.searchBody.idle);
+        const title = ' Search ';
+        const innerW = POPUP_WIDTH - 2;
+        const fillLeft = Math.floor((innerW - title.length) / 2);
+        const fillRight = innerW - title.length - fillLeft;
 
-        let out = Popup.renderFrame({
-            geometry: { row: popupRow, col: popupCol, width: POPUP_WIDTH, height: 3 },
-            borderStyle: t.searchBody.idle,
-            bodyStyle: t.searchBody.idle,
-            padH: 2,
-            padV: 1,
-        });
+        let out = border + moveTo(popupRow, popupCol);
+        out += DBOX.topLeft + DBOX.horizontal.repeat(fillLeft) + title + DBOX.horizontal.repeat(fillRight) + DBOX.topRight;
+
+        out += border + moveTo(popupRow + 1, popupCol);
+        out += DBOX.vertical + ' '.repeat(innerW) + DBOX.vertical;
 
         out += Popup.renderInputField(
             popupRow + 1, popupCol + 2, INPUT_WIDTH,
@@ -86,7 +90,10 @@ export class SearchPopup extends Popup {
             t.searchInput.idle, t.searchCursor.idle,
         );
 
-        out += hideCursor();
+        out += border + moveTo(popupRow + 2, popupCol);
+        out += DBOX.bottomLeft + DBOX.horizontal.repeat(innerW) + DBOX.bottomRight;
+
+        out += resetStyle() + hideCursor();
         return out;
     }
 

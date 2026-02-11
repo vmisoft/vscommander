@@ -6,7 +6,7 @@ Previously, a powerful editor was an extension to dual panel file manager. VSCom
 
 The goal of the project - to preserve the natural look and feel of File Manager while extending its functionality when plactical, and adding support of modern *nix and Windows-compatible operating systems in mind.
 
-![VSCommander Demo](https://i.imgur.com/mzisWMY.gif)
+![VSCommander Demo](https://i.imgur.com/pPQKsdQ.gif)
 
 The project is a work in progress and not publised to the marketplace yet.
 

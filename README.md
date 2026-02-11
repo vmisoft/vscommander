@@ -8,7 +8,7 @@ The goal of the project - to preserve the natural look and feel of File Manager 
 
 ![VSCommander Demo](https://raw.githubusercontent.com/vmisoft/vscommander/refs/heads/master/demo/vscommander.gif)
 
-The project is a work in progress and not publised to the marketplace yet.
+The project is a work in progress and not published to the marketplace yet.
 
 ## Features
 

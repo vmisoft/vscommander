@@ -72,6 +72,10 @@ This extension must work on **Linux, FreeBSD, macOS, and Windows**. Every change
 
 `USER.md` at the project root is the user-facing guide. **Every feature change must update USER.md** — new keybindings, new commands, new panel behaviors, changed defaults. If you add it to the code, add it to USER.md.
 
+### Readme file (MANDATORY)
+
+`README.md` at the project root is the community-facing project description. **Every major feature must be reflected in USER.md**. The file language is concise, highlighting important and competitive features.
+
 ### Adding New Features
 
 1. Drawing primitives go in `draw.ts`

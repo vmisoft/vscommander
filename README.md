@@ -67,6 +67,8 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `F10` | Close panel and return to shell |
 | `Alt+Enter` | Detach to fullscreen / reattach |
 
+![VSCommander Demo](https://raw.githubusercontent.com/vmisoft/vscommander/refs/heads/master/demo/vscommander.gif)
+
 ## Settings
 
 | Setting | Default | Description |
@@ -79,4 +81,3 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 
 MIT
 
-![VSCommander Demo](https://raw.githubusercontent.com/vmisoft/vscommander/refs/heads/master/demo/vscommander.gif)

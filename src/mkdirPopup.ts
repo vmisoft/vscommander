@@ -1,0 +1,310 @@
+import * as os from 'os';
+import { hideCursor, DBOX, BOX, MBOX } from './draw';
+import { Theme } from './settings';
+import { Popup, PopupInputResult } from './popup';
+import { InputControl } from './inputControl';
+import { DropdownControl, DropdownOption } from './dropdownControl';
+import { CheckboxControl } from './checkboxControl';
+import { ButtonGroup } from './buttonGroup';
+import { FrameBuffer } from './frameBuffer';
+
+export interface MkdirResult {
+    folderName: string;
+    linkType: 'none' | 'symbolic' | 'junction';
+    linkTarget: string;
+    multipleNames: boolean;
+}
+
+const DIALOG_HEIGHT = 10;
+const LABEL_WIDTH = 15;
+const ARROW_CHAR = '\u2193';
+
+export class MkdirPopup extends Popup {
+    private nameInput: InputControl;
+    private linkTypeDropdown: DropdownControl;
+    private targetInput: InputControl;
+    private multipleCheckbox: CheckboxControl;
+    private buttons: ButtonGroup;
+    private focusIndex = 0;
+    private dialogWidth = 68;
+
+    constructor() {
+        super();
+        this.nameInput = new InputControl(10);
+        this.linkTypeDropdown = new DropdownControl(this.buildOptions(), 10);
+        this.targetInput = new InputControl(10);
+        this.multipleCheckbox = new CheckboxControl('Process multiple names');
+        this.buttons = new ButtonGroup(['OK', 'Cancel']);
+    }
+
+    private buildOptions(): DropdownOption[] {
+        const options: DropdownOption[] = [
+            { label: 'none', value: 'none' },
+            { label: 'symbolic', value: 'symbolic' },
+        ];
+        if (os.platform() === 'win32') {
+            options.push({ label: 'junction', value: 'junction' });
+        }
+        return options;
+    }
+
+    openWith(initial: string, cols: number): void {
+        this.dialogWidth = Math.min(68, cols - 4);
+        const innerW = this.dialogWidth - 2;
+        const nameWidth = innerW - 2;
+        const fieldWidth = innerW - LABEL_WIDTH - 1;
+        this.nameInput = new InputControl(nameWidth);
+        this.nameInput.reset(initial);
+        this.linkTypeDropdown = new DropdownControl(this.buildOptions(), fieldWidth);
+        this.targetInput = new InputControl(fieldWidth);
+        this.targetInput.reset('');
+        this.multipleCheckbox = new CheckboxControl('Process multiple names');
+        this.buttons = new ButtonGroup(['OK', 'Cancel']);
+        this.focusIndex = 0;
+        super.open();
+    }
+
+    close(): void {
+        this.linkTypeDropdown.isOpen = false;
+        super.close();
+    }
+
+    handleInput(data: string): PopupInputResult {
+        const hotkey = this.handleHotkey(data);
+        if (hotkey) {
+            this.linkTypeDropdown.isOpen = false;
+            return hotkey;
+        }
+
+        if (this.linkTypeDropdown.isOpen) {
+            this.linkTypeDropdown.handleInput(data);
+            return { action: 'consumed' };
+        }
+
+        if (data === '\x1b' || data === '\x1b\x1b') {
+            this.close();
+            return { action: 'close', confirm: false };
+        }
+
+        if (data === '\t') {
+            this.focusIndex = (this.focusIndex + 1) % 5;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+
+        if (data === '\x1b[Z') {
+            this.focusIndex = (this.focusIndex - 1 + 5) % 5;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+
+        switch (this.focusIndex) {
+            case 0:
+                if (this.nameInput.handleInput(data)) {
+                    this.nameInput.resetBlink();
+                    return { action: 'consumed' };
+                }
+                break;
+            case 1:
+                if (this.linkTypeDropdown.handleInput(data)) {
+                    return { action: 'consumed' };
+                }
+                break;
+            case 2:
+                if (this.targetInput.handleInput(data)) {
+                    this.targetInput.resetBlink();
+                    return { action: 'consumed' };
+                }
+                break;
+            case 3:
+                if (this.multipleCheckbox.handleInput(data)) {
+                    return { action: 'consumed' };
+                }
+                break;
+            case 4: {
+                const result = this.buttons.handleInput(data);
+                if (result.confirmed) {
+                    if (this.buttons.selectedIndex === 1) {
+                        this.close();
+                        return { action: 'close', confirm: false };
+                    }
+                    this.close();
+                    return { action: 'close', confirm: true };
+                }
+                if (result.consumed) {
+                    return { action: 'consumed' };
+                }
+                break;
+            }
+        }
+
+        if (data === '\r' && this.focusIndex !== 4) {
+            this.close();
+            return { action: 'close', confirm: true };
+        }
+
+        if (data === '\x1b[A') {
+            if (this.focusIndex > 0) {
+                this.focusIndex--;
+                this.resetActiveBlink();
+            }
+            return { action: 'consumed' };
+        }
+
+        if (data === '\x1b[B') {
+            if (this.focusIndex < 4) {
+                this.focusIndex++;
+                this.resetActiveBlink();
+            }
+            return { action: 'consumed' };
+        }
+
+        return { action: 'consumed' };
+    }
+
+    private handleHotkey(data: string): PopupInputResult | null {
+        if (data === '\x1bf' || data === '\x1bF') {
+            this.focusIndex = 0;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        if (data === '\x1bl' || data === '\x1bL') {
+            this.focusIndex = 1;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        if (data === '\x1bt' || data === '\x1bT') {
+            this.focusIndex = 2;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        if (data === '\x1bm' || data === '\x1bM') {
+            this.focusIndex = 3;
+            this.multipleCheckbox.checked = !this.multipleCheckbox.checked;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        return null;
+    }
+
+    private resetActiveBlink(): void {
+        this.nameInput.resetBlink();
+        this.targetInput.resetBlink();
+    }
+
+    get result(): MkdirResult {
+        return {
+            folderName: this.nameInput.buffer,
+            linkType: this.linkTypeDropdown.selected.value as 'none' | 'symbolic' | 'junction',
+            linkTarget: this.targetInput.buffer,
+            multipleNames: this.multipleCheckbox.checked,
+        };
+    }
+
+    get hasBlink(): boolean {
+        return this.focusIndex === 0 || this.focusIndex === 2;
+    }
+
+    override renderToBuffer(theme: Theme): FrameBuffer {
+        const t = theme;
+        const w = this.dialogWidth;
+        const innerW = w - 2;
+        const totalW = w + 2 * this.padH;
+        const totalH = DIALOG_HEIGHT + 2 * this.padV;
+        const boxRow = this.padV;
+        const boxCol = this.padH;
+        const bodyStyle = t.dialogBody.idle;
+        const inputStyle = t.dialogInput.idle;
+        const cursorStyle = t.dialogInputCursor.idle;
+        const hotkeyStyle = t.dialogHotkey.idle;
+        const fieldCol = boxCol + 1 + LABEL_WIDTH;
+        const arrowCol = boxCol + innerW - 1;
+
+        const fb = new FrameBuffer(totalW, totalH);
+        fb.fill(0, 0, totalW, totalH, ' ', bodyStyle);
+        fb.drawBox(boxRow, boxCol, w, DIALOG_HEIGHT, bodyStyle, DBOX, 'Make folder');
+
+        // Row 1: label
+        fb.write(boxRow + 1, boxCol + 1, ' Create the folder:' + ' '.repeat(Math.max(0, innerW - 19)), t.dialogLabel.idle);
+        fb.write(boxRow + 1, boxCol + 13, 'f', hotkeyStyle);
+
+        // Row 2: name input
+        fb.blit(boxRow + 2, boxCol + 2, this.nameInput.renderToBuffer(inputStyle, cursorStyle, this.focusIndex === 0));
+        fb.write(boxRow + 2, arrowCol, ARROW_CHAR, bodyStyle);
+
+        // Row 3: separator
+        fb.drawSeparator(boxRow + 3, boxCol, w, bodyStyle, MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
+
+        // Row 4: link type
+        fb.write(boxRow + 4, boxCol + 1, ' Link type:   ', bodyStyle);
+        fb.write(boxRow + 4, boxCol + 2, 'L', hotkeyStyle);
+        const dropFocused = this.focusIndex === 1;
+        const dropFieldStyle = dropFocused ? t.dialogDropdown.idle : inputStyle;
+        fb.blit(boxRow + 4, fieldCol, this.linkTypeDropdown.renderToBuffer(inputStyle, dropFieldStyle, dropFocused));
+        fb.write(boxRow + 4, arrowCol, ARROW_CHAR, bodyStyle);
+
+        // Row 5: target input
+        fb.write(boxRow + 5, boxCol + 1, ' Target:      ', bodyStyle);
+        fb.write(boxRow + 5, boxCol + 2, 'T', hotkeyStyle);
+        fb.blit(boxRow + 5, fieldCol, this.targetInput.renderToBuffer(inputStyle, cursorStyle, this.focusIndex === 2));
+        fb.write(boxRow + 5, arrowCol, ARROW_CHAR, bodyStyle);
+
+        // Row 6: checkbox
+        const cbFocused = this.focusIndex === 3;
+        const cbStyle = cbFocused ? t.dialogInput.idle : t.dialogBody.idle;
+        fb.blit(boxRow + 6, boxCol + 2, this.multipleCheckbox.renderToBuffer(t.dialogBody.idle, cbStyle, cbFocused));
+        fb.write(boxRow + 6, boxCol + 14, 'm', cbFocused ? t.dialogHotkey.selected : t.dialogHotkey.idle);
+
+        // Row 7: separator
+        fb.drawSeparator(boxRow + 7, boxCol, w, bodyStyle, MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
+
+        // Row 8: buttons
+        const btnFocused = this.focusIndex === 4;
+        fb.blit(boxRow + 8, boxCol + 1, this.buttons.renderToBuffer(innerW, t.dialogBody.idle, t.dialogButton.idle, t.dialogButton.selected, btnFocused));
+
+        // Dropdown popup overlay (if open)
+        if (this.linkTypeDropdown.isOpen) {
+            fb.blit(boxRow + 5, fieldCol - 1, this.linkTypeDropdown.renderPopupToBuffer(
+                t.dialogBody.idle, t.dialogInput.idle, t.dialogDropdown.selected
+            ));
+        }
+
+        return fb;
+    }
+
+    render(rows: number, cols: number, theme: Theme): string {
+        if (!this.active) return '';
+        const fb = this.renderToBuffer(theme);
+        const screenRow = Math.floor((rows - fb.height) / 2) + 1;
+        const screenCol = Math.floor((cols - fb.width) / 2) + 1;
+        return fb.toAnsi(screenRow, screenCol);
+    }
+
+    renderMkdirBlink(rows: number, cols: number, theme: Theme): string {
+        if (!this.active) return '';
+        const t = theme;
+        const w = this.dialogWidth;
+        const totalW = w + 2 * this.padH;
+        const totalH = DIALOG_HEIGHT + 2 * this.padV;
+        const startCol = Math.floor((cols - totalW) / 2) + 1 + this.padH;
+        const startRow = Math.floor((rows - totalH) / 2) + 1 + this.padV;
+        const nameCol = startCol + 2;
+        const fieldCol = startCol + 1 + LABEL_WIDTH;
+        const inputStyle = t.dialogInput.idle;
+        const cursorStyle = t.dialogInputCursor.idle;
+
+        let out = '';
+        if (this.focusIndex === 0) {
+            out += this.nameInput.renderBlink(startRow + 2, nameCol, inputStyle, cursorStyle);
+        } else if (this.focusIndex === 2) {
+            out += this.targetInput.renderBlink(startRow + 5, fieldCol, inputStyle, cursorStyle);
+        }
+        out += hideCursor();
+        return out;
+    }
+
+    resetMkdirBlink(): void {
+        this.nameInput.resetBlink();
+        this.targetInput.resetBlink();
+    }
+}

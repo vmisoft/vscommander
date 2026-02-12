@@ -4,24 +4,27 @@ import {
     enterAltScreen, leaveAltScreen, clearScreen, showCursor, hideCursor,
     resetStyle, moveTo, bgRgb, DBOX
 } from './draw';
-import { PanelSettings } from './settings';
+import { PanelSettings, KeyBindings, matchesKeyBinding, getFKeyNumber } from './settings';
 import { Layout, PaneGeometry } from './types';
 import { applyStyle, computeLayout } from './helpers';
 import { Pane } from './pane';
 import { SearchPopup } from './searchPopup';
 import { DrivePopup } from './drivePopup';
 import { ConfirmPopup } from './confirmPopup';
+import { MkdirPopup } from './mkdirPopup';
 import { TerminalBuffer } from './terminalBuffer';
 
 export type PanelInputResult =
     | { action: 'close' }
     | { action: 'redraw'; data: string; chdir?: string }
     | { action: 'input'; data: string; redraw: string }
+    | { action: 'executeCommand'; data: string }
     | { action: 'settingsChanged' }
     | { action: 'toggleDetach' }
     | { action: 'openFile'; filePath: string }
     | { action: 'viewFile'; filePath: string }
     | { action: 'deleteFile'; filePath: string; toTrash: boolean }
+    | { action: 'mkdir'; cwd: string; folderName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean }
     | { action: 'none' };
 
 export class Panel {
@@ -36,10 +39,13 @@ export class Panel {
     searchPopup: SearchPopup;
     drivePopup: DrivePopup;
     confirmPopup: ConfirmPopup;
+    mkdirPopup: MkdirPopup;
     termBuffer: TerminalBuffer;
     inactivePaneHidden = false;
     cmdCursorVisible = true;
     splitOffset = 0;
+    waitingMode = false;
+    spinnerFrame = 0;
 
     constructor(cols: number, rows: number, cwd: string, settings: PanelSettings) {
         this.cols = cols;
@@ -50,6 +56,7 @@ export class Panel {
         this.searchPopup = new SearchPopup();
         this.drivePopup = new DrivePopup();
         this.confirmPopup = new ConfirmPopup();
+        this.mkdirPopup = new MkdirPopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
     }
 
@@ -62,7 +69,15 @@ export class Panel {
 
     hide(): string {
         this.visible = false;
+        this.waitingMode = false;
         return showCursor() + leaveAltScreen();
+    }
+
+    renderSpinnerUpdate(): string {
+        if (!this.visible || !this.waitingMode) return '';
+        this.spinnerFrame++;
+        const layout = this.getLayout();
+        return this.renderCommandLine(layout) + hideCursor();
     }
 
     resize(cols: number, rows: number): string {
@@ -85,6 +100,11 @@ export class Panel {
         return computeLayout(this.rows, this.cols, this.settings.panelColumns, this.leftWidth);
     }
 
+    get hasActivePopup(): boolean {
+        return this.searchPopup.active || this.drivePopup.active
+            || this.confirmPopup.active || this.mkdirPopup.active;
+    }
+
     get activePaneObj(): Pane {
         return this.activePane === 'left' ? this.left : this.right;
     }
@@ -102,14 +122,14 @@ export class Panel {
     }
 
     renderCmdCursorBlink(): string {
-        if (!this.visible || this.searchPopup.active || this.drivePopup.active || this.confirmPopup.active) return '';
+        if (!this.visible || this.waitingMode || this.hasActivePopup) return '';
         this.cmdCursorVisible = !this.cmdCursorVisible;
         const layout = this.getLayout();
         return this.renderCmdCursor(layout);
     }
 
     renderClockUpdate(): string {
-        if (!this.visible || !this.settings.clockEnabled) return '';
+        if (!this.visible || !this.settings.clockEnabled || this.hasActivePopup) return '';
         const layout = this.getLayout();
         const t = this.settings.theme;
         const leftIsActive = this.activePane === 'left';
@@ -120,6 +140,19 @@ export class Panel {
         });
     }
 
+    get isMkdirBlinkActive(): boolean {
+        return this.mkdirPopup.active && this.mkdirPopup.hasBlink;
+    }
+
+    resetMkdirBlink(): void {
+        this.mkdirPopup.resetMkdirBlink();
+    }
+
+    renderMkdirCursorBlink(): string {
+        if (!this.visible || !this.mkdirPopup.active) return '';
+        return this.mkdirPopup.renderMkdirBlink(this.rows, this.cols, this.settings.theme);
+    }
+
     renderSearchCursorBlink(): string {
         if (!this.visible || !this.searchPopup.active) return '';
         const layout = this.getLayout();
@@ -128,16 +161,14 @@ export class Panel {
     }
 
     renderShellUpdate(): string {
-        if (!this.visible) return '';
+        if (!this.visible || this.waitingMode || this.hasActivePopup) return '';
         const layout = this.getLayout();
         const out: string[] = [];
         out.push(this.renderCommandLine(layout));
         if (this.inactivePaneHidden) {
             out.push(this.renderTerminalArea(layout));
         }
-        if (!this.searchPopup.active && !this.drivePopup.active && !this.confirmPopup.active) {
-            out.push(this.renderCmdCursor(layout));
-        }
+        out.push(this.renderCmdCursor(layout));
         return out.join('');
     }
 
@@ -159,6 +190,22 @@ export class Panel {
             if (result.action === 'close' && result.confirm) {
                 const action = this.confirmPopup.invokeConfirm() as PanelInputResult | undefined;
                 if (action) return action;
+            }
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (this.mkdirPopup.active) {
+            const result = this.mkdirPopup.handleInput(data);
+            if (result.action === 'close' && result.confirm) {
+                const r = this.mkdirPopup.result;
+                return {
+                    action: 'mkdir',
+                    cwd: pane.cwd,
+                    folderName: r.folderName,
+                    linkType: r.linkType,
+                    linkTarget: r.linkTarget,
+                    multipleNames: r.multipleNames,
+                };
             }
             return { action: 'redraw', data: this.render() };
         }
@@ -212,12 +259,12 @@ export class Panel {
             }
         }
 
-        if (data === '\x1b[1;3P' || data === '\x1b\x1bOP') {
+        if (matchesKeyBinding(data, this.settings.keys.driveLeft)) {
             this.drivePopup.open('left', this.settings);
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[1;3Q' || data === '\x1b\x1bOQ') {
+        if (matchesKeyBinding(data, this.settings.keys.driveRight)) {
             this.drivePopup.open('right', this.settings);
             return { action: 'redraw', data: this.render() };
         }
@@ -226,15 +273,15 @@ export class Panel {
             return { action: 'none' };
         }
 
-        if (data === '\x1b\r') {
+        if (matchesKeyBinding(data, this.settings.keys.detach)) {
             return { action: 'toggleDetach' };
         }
 
-        if (data === '\x1b[21~') {
+        if (matchesKeyBinding(data, this.settings.keys.quit)) {
             return { action: 'close' };
         }
 
-        if (data === '\x1bOR') {
+        if (matchesKeyBinding(data, this.settings.keys.view)) {
             const entry = pane.entries[pane.cursor];
             if (entry && entry.name !== '..') {
                 return { action: 'viewFile', filePath: path.join(pane.cwd, entry.name) };
@@ -242,7 +289,7 @@ export class Panel {
             return { action: 'none' };
         }
 
-        if (data === '\x1bOS') {
+        if (matchesKeyBinding(data, this.settings.keys.edit)) {
             const entry = pane.entries[pane.cursor];
             if (entry && !entry.isDir) {
                 return { action: 'openFile', filePath: path.join(pane.cwd, entry.name) };
@@ -250,29 +297,34 @@ export class Panel {
             return { action: 'none' };
         }
 
-        if (data === '\x1b[19~') {
+        if (matchesKeyBinding(data, this.settings.keys.mkdir)) {
+            this.mkdirPopup.openWith('', this.cols);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, this.settings.keys.delete)) {
             const platform = os.platform();
             const hasTrash = platform === 'win32' || platform === 'darwin';
             return this.openDeletePopup(pane, hasTrash);
         }
 
-        if (data === '\x1b[19;2~' || data === '\x1b[3;2~') {
+        if (matchesKeyBinding(data, this.settings.keys.forceDelete)) {
             return this.openDeletePopup(pane, false);
         }
 
-        if (data === '\x08') {
+        if (matchesKeyBinding(data, this.settings.keys.toggleDotfiles)) {
             this.settings.showDotfiles = !this.settings.showDotfiles;
             this.left.refresh(this.settings);
             this.right.refresh(this.settings);
             return { action: 'settingsChanged' };
         }
 
-        if (data === '\x10') {
+        if (matchesKeyBinding(data, this.settings.keys.togglePane)) {
             this.inactivePaneHidden = !this.inactivePaneHidden;
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[1;5D') {
+        if (matchesKeyBinding(data, this.settings.keys.resizeLeft)) {
             const minWidth = 10;
             if (this.leftWidth > minWidth) {
                 this.splitOffset--;
@@ -281,7 +333,7 @@ export class Panel {
             return { action: 'none' };
         }
 
-        if (data === '\x1b[1;5C') {
+        if (matchesKeyBinding(data, this.settings.keys.resizeRight)) {
             const minWidth = 10;
             if (this.cols - this.leftWidth > minWidth) {
                 this.splitOffset++;
@@ -410,7 +462,7 @@ export class Panel {
         if (data === '\r') {
             if (this.shellInputLen > 0) {
                 this.shellInputLen = 0;
-                return { action: 'input', data: '\r', redraw: '' };
+                return { action: 'executeCommand', data: '\r' };
             }
             const entry = pane.entries[pane.cursor];
             if (entry && entry.isDir) {
@@ -507,11 +559,14 @@ export class Panel {
         if (this.searchPopup.active) {
             const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.searchPopup.render(layout.bottomRow, activePaneGeo.startCol, t));
+        } else if (this.mkdirPopup.active) {
+            out.push(this.mkdirPopup.render(this.rows, this.cols, t));
         } else if (this.confirmPopup.active) {
             out.push(this.confirmPopup.render(this.rows, this.cols, t));
         } else if (this.drivePopup.active) {
             const targetGeo = this.drivePopup.targetPane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.drivePopup.render(layout.listStart, targetGeo.startCol, t, targetGeo.width));
+        } else if (this.waitingMode) {
             out.push(hideCursor());
         } else {
             out.push(this.renderCmdCursor(layout));
@@ -587,6 +642,23 @@ export class Panel {
         const t = this.settings.theme;
         const out: string[] = [];
 
+        if (this.waitingMode) {
+            const spinnerFrames = [
+                '\u28ff\u28f7', '\u28ff\u28ef', '\u28ff\u28df', '\u28ff\u287f', '\u28ff\u28bf', '\u287f\u28ff',
+                '\u28bf\u28ff', '\u28fb\u28ff', '\u28fd\u28ff', '\u28fe\u28ff', '\u28f7\u28ff', '\u28ff\u28fe',
+            ];
+            const spinner = spinnerFrames[this.spinnerFrame % spinnerFrames.length];
+            const display = (' ' + spinner + ' Running... ' + this.settings.toggleKey + ' for details').slice(0, cols);
+            out.push(applyStyle(t.commandLine.idle));
+            out.push(moveTo(cmdRow, 1));
+            out.push(display);
+            if (display.length < cols) {
+                out.push(' '.repeat(cols - display.length));
+            }
+            out.push(resetStyle());
+            return out.join('');
+        }
+
         const termRow = this.termBuffer.getCursorRow();
         const content = this.termBuffer.getRow(termRow);
         const display = content.slice(0, cols);
@@ -657,18 +729,30 @@ export class Panel {
         const t = this.settings.theme;
         const out: string[] = [];
 
-        const keys = [
-            { num: '1', label: 'Help' },
-            { num: '2', label: 'Menu' },
-            { num: '3', label: 'View' },
-            { num: '4', label: 'Edit' },
-            { num: '5', label: 'Copy' },
-            { num: '6', label: 'Move' },
-            { num: '7', label: 'Mkdir' },
-            { num: '8', label: 'Del' },
-            { num: '9', label: 'Conf' },
-            { num: '10', label: 'Quit' },
+        const actionSlots: { action: keyof KeyBindings; label: string }[] = [
+            { action: 'view', label: 'View' },
+            { action: 'edit', label: 'Edit' },
+            { action: 'mkdir', label: 'Mkdir' },
+            { action: 'delete', label: 'Del' },
+            { action: 'quit', label: 'Quit' },
         ];
+        const defaultLabels: Record<number, string> = {
+            1: 'Help', 2: 'Menu', 5: 'Copy', 6: 'Move', 9: 'Conf',
+        };
+        const keys: { num: string; label: string }[] = [];
+        for (let i = 1; i <= 10; i++) {
+            let label = '';
+            for (const al of actionSlots) {
+                if (getFKeyNumber(this.settings.keys[al.action]) === i) {
+                    label = al.label;
+                    break;
+                }
+            }
+            if (!label) {
+                label = defaultLabels[i] || '';
+            }
+            keys.push({ num: String(i), label });
+        }
 
         out.push(moveTo(fkeyRow, 1) + resetStyle());
 

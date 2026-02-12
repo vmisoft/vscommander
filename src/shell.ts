@@ -2,13 +2,17 @@
 
 import * as pty from 'node-pty';
 import * as os from 'os';
+import * as fs from 'fs';
+import * as child_process from 'child_process';
 
 export interface ShellProxy {
     pty: pty.IPty;
+    shellProcess: string;
     write(data: string): void;
     resize(cols: number, rows: number): void;
     onData(handler: (data: string) => void): void;
     onExit(handler: (exitCode: number) => void): void;
+    getCwd(): string | undefined;
     kill(): void;
 }
 
@@ -37,6 +41,7 @@ export function spawnShell(cols: number, rows: number, cwd?: string): ShellProxy
 
     return {
         pty: ptyProcess,
+        shellProcess: ptyProcess.process,
         write(data: string) {
             ptyProcess.write(data);
         },
@@ -48,6 +53,25 @@ export function spawnShell(cols: number, rows: number, cwd?: string): ShellProxy
         },
         onExit(handler: (exitCode: number) => void) {
             ptyProcess.onExit(({ exitCode }) => handler(exitCode));
+        },
+        getCwd() {
+            const pid = ptyProcess.pid;
+            try {
+                return fs.readlinkSync('/proc/' + pid + '/cwd');
+            } catch {
+                // /proc not available (macOS, FreeBSD without procfs)
+            }
+            try {
+                const out = child_process.execSync(
+                    'lsof -a -p ' + pid + ' -d cwd -Fn 2>/dev/null',
+                    { encoding: 'utf8', timeout: 1000 }
+                );
+                const match = out.match(/\nn(.*)/);
+                if (match) return match[1];
+            } catch {
+                // lsof not available (Windows)
+            }
+            return undefined;
         },
         kill() {
             ptyProcess.kill();

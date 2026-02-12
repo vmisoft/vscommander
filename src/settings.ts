@@ -41,6 +41,13 @@ export interface Theme {
     driveNumber: RenderStyle;
     confirmBody: RenderStyle;
     confirmButton: RenderStyle;
+    dialogBody: RenderStyle;
+    dialogInput: RenderStyle;
+    dialogInputCursor: RenderStyle;
+    dialogLabel: RenderStyle;
+    dialogButton: RenderStyle;
+    dialogDropdown: RenderStyle;
+    dialogHotkey: RenderStyle;
 }
 
 const BLACK = '000000';
@@ -80,8 +87,96 @@ export const DEFAULT_THEME: Theme = {
     driveText: rs(s(PURE_WHITE, DARK_TEAL), s(PURE_WHITE, TEAL)),
     driveNumber: rs(s(BRIGHT_YELLOW, DARK_TEAL, true), s(BRIGHT_YELLOW, TEAL, true)),
     confirmBody: rs(s(PURE_WHITE, DARK_RED)),
-    confirmButton: rs(s(PURE_WHITE, DARK_RED), s(BLACK, LIGHT_GRAY)),
+    confirmButton: rs(s(PURE_WHITE, DARK_RED, true), s(BLACK, LIGHT_GRAY, true)),
+    dialogBody: rs(s(BLACK, LIGHT_GRAY, true)),
+    dialogInput: rs(s(BLACK, DARK_TEAL, true)),
+    dialogInputCursor: rs(s(ROSE, DARK_TEAL, true)),
+    dialogLabel: rs(s(BLACK, LIGHT_GRAY, true)),
+    dialogButton: rs(s(BLACK, LIGHT_GRAY, true), s(BLACK, DARK_TEAL, true)),
+    dialogDropdown: rs(s(PURE_WHITE, BLACK, true), s(BLACK, LIGHT_GRAY, true)),
+    dialogHotkey: rs(s(BRIGHT_YELLOW, LIGHT_GRAY, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
 };
+
+export interface KeyBindings {
+    view: string;
+    edit: string;
+    mkdir: string;
+    delete: string;
+    forceDelete: string;
+    quit: string;
+    driveLeft: string;
+    driveRight: string;
+    toggleDotfiles: string;
+    togglePane: string;
+    detach: string;
+    resizeLeft: string;
+    resizeRight: string;
+}
+
+export const DEFAULT_KEY_BINDINGS: KeyBindings = {
+    view: 'F3',
+    edit: 'F4',
+    mkdir: 'F7',
+    delete: 'F8',
+    forceDelete: 'Shift+F8',
+    quit: 'F10',
+    driveLeft: 'Alt+F1',
+    driveRight: 'Alt+F2',
+    toggleDotfiles: 'Ctrl+H',
+    togglePane: 'Ctrl+P',
+    detach: 'Alt+Enter',
+    resizeLeft: 'Ctrl+Left',
+    resizeRight: 'Ctrl+Right',
+};
+
+const KEY_SEQUENCES: Record<string, string[]> = {
+    'F1': ['\x1bOP'],
+    'F2': ['\x1bOQ'],
+    'F3': ['\x1bOR'],
+    'F4': ['\x1bOS'],
+    'F5': ['\x1b[15~'],
+    'F6': ['\x1b[17~'],
+    'F7': ['\x1b[18~'],
+    'F8': ['\x1b[19~'],
+    'F9': ['\x1b[20~'],
+    'F10': ['\x1b[21~'],
+    'Shift+F1': ['\x1b[1;2P'],
+    'Shift+F2': ['\x1b[1;2Q'],
+    'Shift+F3': ['\x1b[1;2R'],
+    'Shift+F4': ['\x1b[1;2S'],
+    'Shift+F5': ['\x1b[15;2~'],
+    'Shift+F6': ['\x1b[17;2~'],
+    'Shift+F7': ['\x1b[18;2~'],
+    'Shift+F8': ['\x1b[19;2~'],
+    'Shift+F9': ['\x1b[20;2~'],
+    'Shift+F10': ['\x1b[21;2~'],
+    'Shift+Delete': ['\x1b[3;2~'],
+    'Alt+F1': ['\x1b[1;3P', '\x1b\x1bOP'],
+    'Alt+F2': ['\x1b[1;3Q', '\x1b\x1bOQ'],
+    'Alt+F3': ['\x1b[1;3R', '\x1b\x1bOR'],
+    'Alt+F4': ['\x1b[1;3S', '\x1b\x1bOS'],
+    'Alt+F5': ['\x1b[15;3~'],
+    'Alt+F6': ['\x1b[17;3~'],
+    'Alt+F7': ['\x1b[18;3~'],
+    'Alt+F8': ['\x1b[19;3~'],
+    'Alt+F9': ['\x1b[20;3~'],
+    'Alt+F10': ['\x1b[21;3~'],
+    'Ctrl+H': ['\x08'],
+    'Ctrl+P': ['\x10'],
+    'Alt+Enter': ['\x1b\r'],
+    'Ctrl+Left': ['\x1b[1;5D'],
+    'Ctrl+Right': ['\x1b[1;5C'],
+};
+
+export function matchesKeyBinding(data: string, keyName: string): boolean {
+    const sequences = KEY_SEQUENCES[keyName];
+    return sequences !== undefined && sequences.includes(data);
+}
+
+export function getFKeyNumber(keyName: string): number | undefined {
+    const match = keyName.match(/^F(\d+)$/);
+    return match ? parseInt(match[1], 10) : undefined;
+}
 
 export interface PanelSettings {
     showDotfiles: boolean;
@@ -90,6 +185,8 @@ export interface PanelSettings {
     panelColumns: number;
     theme: Theme;
     workspaceFolders: string[];
+    toggleKey: string;
+    keys: KeyBindings;
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {
@@ -99,8 +196,14 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     panelColumns: 2,
     theme: DEFAULT_THEME,
     workspaceFolders: [],
+    toggleKey: 'Ctrl+O',
+    keys: DEFAULT_KEY_BINDINGS,
 };
 
 export function mergeSettings(overrides: Partial<PanelSettings>): PanelSettings {
-    return { ...DEFAULT_SETTINGS, ...overrides };
+    return {
+        ...DEFAULT_SETTINGS,
+        ...overrides,
+        keys: { ...DEFAULT_KEY_BINDINGS, ...(overrides.keys || {}) },
+    };
 }

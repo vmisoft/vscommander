@@ -6,7 +6,8 @@ import { Theme, PanelSettings } from './settings';
 import { DriveEntry } from './types';
 import { Popup, PopupInputResult } from './popup';
 import { formatSizeHuman } from './helpers';
-import { PopupTable, TableSection, TableRow } from './popupTable';
+import { PopupTable, PopupTableStyles, TableSection, TableRow } from './popupTable';
+import { FrameBuffer } from './frameBuffer';
 
 const VIRTUAL_FS_TYPES = new Set([
     'tmpfs', 'devtmpfs', 'proc', 'sysfs', 'devpts', 'securityfs',
@@ -21,7 +22,12 @@ export class DrivePopup extends Popup {
     targetPane: 'left' | 'right' = 'left';
     entries: DriveEntry[] = [];
     cursor = 0;
+    override padding = 0;
     private separatorIndex = -1;
+
+    constructor() {
+        super();
+    }
 
     open(target?: 'left' | 'right', settings?: PanelSettings): void {
         if (!target || !settings) return;
@@ -135,9 +141,7 @@ export class DrivePopup extends Popup {
         return this.entries[this.cursor];
     }
 
-    render(anchorRow: number, anchorCol: number, theme: Theme, maxWidth?: number): string {
-        if (!this.active || this.entries.length === 0) return '';
-
+    private buildTable(theme: Theme): { table: PopupTable; styles: PopupTableStyles } {
         const driveEntries = this.entries.filter(e => e.group === 'drive');
         const homeEntries = this.entries.filter(e => e.group === 'home');
         const workspaceEntries = this.entries.filter(e => e.group === 'workspace');
@@ -180,12 +184,27 @@ export class DrivePopup extends Popup {
             ];
         }
 
-        return table.render(anchorRow, anchorCol, {
-            body: theme.driveBody,
-            label: theme.driveLabel,
-            text: theme.driveText,
-            number: theme.driveNumber,
-        }, maxWidth);
+        return {
+            table,
+            styles: {
+                body: theme.driveBody,
+                label: theme.driveLabel,
+                text: theme.driveText,
+                number: theme.driveNumber,
+            },
+        };
+    }
+
+    override renderToBuffer(theme: Theme): FrameBuffer {
+        if (!this.active || this.entries.length === 0) return new FrameBuffer(0, 0);
+        const { table, styles } = this.buildTable(theme);
+        return table.renderToBuffer(styles);
+    }
+
+    render(anchorRow: number, anchorCol: number, theme: Theme, maxWidth?: number): string {
+        if (!this.active || this.entries.length === 0) return '';
+        const { table, styles } = this.buildTable(theme);
+        return table.render(anchorRow, anchorCol, styles, maxWidth);
     }
 
     static buildEntries(workspaceFolders: string[]): DriveEntry[] {

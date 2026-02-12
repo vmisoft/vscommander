@@ -1,32 +1,50 @@
-import { hideCursor, moveTo, resetStyle, DBOX } from './draw';
+import { hideCursor, DBOX } from './draw';
 import { Theme } from './settings';
 import { DirEntry } from './types';
 import { Popup, PopupInputResult } from './popup';
-import { applyStyle } from './helpers';
+import { InputControl } from './inputControl';
+import { FrameBuffer } from './frameBuffer';
 
 const POPUP_WIDTH = 20;
 const INPUT_WIDTH = POPUP_WIDTH - 4;
 const POPUP_COL_OFFSET = 8;
 
 export class SearchPopup extends Popup {
-    buffer = '';
-    cursorVisible = true;
+    input: InputControl;
     lastMatchIndex = -1;
+
+    constructor() {
+        super();
+        this.padding = 0;
+        this.input = new InputControl(INPUT_WIDTH);
+    }
+
+    get buffer(): string {
+        return this.input.buffer;
+    }
+
+    get cursorVisible(): boolean {
+        return this.input.cursorVisible;
+    }
+
+    set cursorVisible(v: boolean) {
+        this.input.cursorVisible = v;
+    }
 
     override open(): void {
         super.open();
-        this.cursorVisible = true;
+        this.input.reset('');
         this.lastMatchIndex = -1;
     }
 
     openWithChar(initialChar: string): void {
         this.open();
-        this.buffer = initialChar;
+        this.input.reset(initialChar);
     }
 
     close(): void {
         super.close();
-        this.buffer = '';
+        this.input.reset('');
     }
 
     handleInput(data: string, entries: DirEntry[]): PopupInputResult {
@@ -41,20 +59,21 @@ export class SearchPopup extends Popup {
         }
 
         if (data === '\x7f') {
-            if (this.buffer.length > 0) {
-                this.buffer = this.buffer.slice(0, -1);
-                this.lastMatchIndex = this.buffer.length > 0
-                    ? SearchPopup.findPrefixMatch(entries, this.buffer)
+            if (this.input.buffer.length > 0) {
+                this.input.buffer = this.input.buffer.slice(0, -1);
+                this.input.cursorPos = this.input.buffer.length;
+                this.lastMatchIndex = this.input.buffer.length > 0
+                    ? SearchPopup.findPrefixMatch(entries, this.input.buffer)
                     : -1;
             }
             return { action: 'consumed' };
         }
 
         if (data.length === 1 && data.charCodeAt(0) >= 0x20) {
-            const candidate = this.buffer + data;
+            const candidate = this.input.buffer + data;
             const matchIdx = SearchPopup.findPrefixMatch(entries, candidate);
             if (matchIdx >= 0) {
-                this.buffer = candidate;
+                this.input.insert(data);
                 this.lastMatchIndex = matchIdx;
                 return { action: 'consumed' };
             }
@@ -66,35 +85,18 @@ export class SearchPopup extends Popup {
         return { action: 'passthrough' };
     }
 
+    override renderToBuffer(theme: Theme): FrameBuffer {
+        const t = theme;
+        const bodyStyle = t.searchBody.idle;
+        const fb = new FrameBuffer(POPUP_WIDTH, 3);
+        fb.drawBox(0, 0, POPUP_WIDTH, 3, bodyStyle, DBOX, 'Search');
+        fb.blit(1, 2, this.input.renderToBuffer(t.searchInput.idle, t.searchCursor.idle, true));
+        return fb;
+    }
+
     render(anchorRow: number, anchorCol: number, theme: Theme): string {
         if (!this.active) return '';
-
-        const t = theme;
-        const popupCol = anchorCol + POPUP_COL_OFFSET;
-        const popupRow = anchorRow;
-        const border = applyStyle(t.searchBody.idle);
-        const title = ' Search ';
-        const innerW = POPUP_WIDTH - 2;
-        const fillLeft = Math.floor((innerW - title.length) / 2);
-        const fillRight = innerW - title.length - fillLeft;
-
-        let out = border + moveTo(popupRow, popupCol);
-        out += DBOX.topLeft + DBOX.horizontal.repeat(fillLeft) + title + DBOX.horizontal.repeat(fillRight) + DBOX.topRight;
-
-        out += border + moveTo(popupRow + 1, popupCol);
-        out += DBOX.vertical + ' '.repeat(innerW) + DBOX.vertical;
-
-        out += Popup.renderInputField(
-            popupRow + 1, popupCol + 2, INPUT_WIDTH,
-            this.buffer, this.cursorVisible,
-            t.searchInput.idle, t.searchCursor.idle,
-        );
-
-        out += border + moveTo(popupRow + 2, popupCol);
-        out += DBOX.bottomLeft + DBOX.horizontal.repeat(innerW) + DBOX.bottomRight;
-
-        out += resetStyle() + hideCursor();
-        return out;
+        return this.renderToBuffer(theme).toAnsi(anchorRow, anchorCol + POPUP_COL_OFFSET);
     }
 
     get hasBlink(): boolean {
@@ -103,15 +105,13 @@ export class SearchPopup extends Popup {
 
     renderBlink(anchorRow: number, anchorCol: number, theme: Theme): string {
         if (!this.active) return '';
-        this.cursorVisible = !this.cursorVisible;
 
         const t = theme;
         const popupCol = anchorCol + POPUP_COL_OFFSET;
         const popupRow = anchorRow;
 
-        let out = Popup.renderInputField(
-            popupRow + 1, popupCol + 2, INPUT_WIDTH,
-            this.buffer, this.cursorVisible,
+        let out = this.input.renderBlink(
+            popupRow + 1, popupCol + 2,
             t.searchInput.idle, t.searchCursor.idle,
         );
 

@@ -3,6 +3,10 @@
   "displayName": "VSCommander",
   "description": "Dual-panel file manager overlaid on a real terminal",
   "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vmisoft/vscommander.git"
+  },
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -96,6 +100,71 @@
           "minimum": 1,
           "maximum": 3,
           "description": "Number of file columns per panel (1, 2, or 3)"
+        },
+        "vscommander.keyView": {
+          "type": "string",
+          "default": "F3",
+          "description": "Key binding for View (reveal file in Explorer)"
+        },
+        "vscommander.keyEdit": {
+          "type": "string",
+          "default": "F4",
+          "description": "Key binding for Edit (open file in editor)"
+        },
+        "vscommander.keyMkdir": {
+          "type": "string",
+          "default": "F7",
+          "description": "Key binding for Mkdir (create directory)"
+        },
+        "vscommander.keyDelete": {
+          "type": "string",
+          "default": "F8",
+          "description": "Key binding for Delete (move to Trash)"
+        },
+        "vscommander.keyForceDelete": {
+          "type": "string",
+          "default": "Shift+F8",
+          "description": "Key binding for permanent Delete (bypass Trash)"
+        },
+        "vscommander.keyQuit": {
+          "type": "string",
+          "default": "F10",
+          "description": "Key binding for Quit (close panel)"
+        },
+        "vscommander.keyDriveLeft": {
+          "type": "string",
+          "default": "Alt+F1",
+          "description": "Key binding for Change Drive popup (left pane)"
+        },
+        "vscommander.keyDriveRight": {
+          "type": "string",
+          "default": "Alt+F2",
+          "description": "Key binding for Change Drive popup (right pane)"
+        },
+        "vscommander.keyToggleDotfiles": {
+          "type": "string",
+          "default": "Ctrl+H",
+          "description": "Key binding for toggling dotfile visibility"
+        },
+        "vscommander.keyTogglePane": {
+          "type": "string",
+          "default": "Ctrl+P",
+          "description": "Key binding for toggling inactive pane visibility"
+        },
+        "vscommander.keyDetach": {
+          "type": "string",
+          "default": "Alt+Enter",
+          "description": "Key binding for detach/attach fullscreen window"
+        },
+        "vscommander.keyResizeLeft": {
+          "type": "string",
+          "default": "Ctrl+Left",
+          "description": "Key binding for moving pane border left"
+        },
+        "vscommander.keyResizeRight": {
+          "type": "string",
+          "default": "Ctrl+Right",
+          "description": "Key binding for moving pane border right"
         }
       }
     },

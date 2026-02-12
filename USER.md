@@ -47,6 +47,8 @@ $ ls -la                                                <- command line
 
 ### Inside the Panel
 
+All panel shortcuts below show their default key bindings. Every action can be remapped via settings (see [Key Binding Settings](#key-binding-settings)).
+
 | Key | Action |
 |-----|--------|
 | `Up` / `Down` | Move cursor through file list |
@@ -56,9 +58,11 @@ $ ls -la                                                <- command line
 | `End` | Jump to last entry |
 | `Tab` | Switch between left and right pane |
 | `Enter` | Open selected directory / open file in editor / execute command if text is entered |
+| `F3` | View -- highlight file in VS Code Explorer; open in system file manager if outside workspace |
 | `F4` | Open selected file in VS Code editor |
+| `F7` | Open Make Folder dialog |
 | `F8` | Delete selected file or folder (moves to Recycle Bin / Trash on Windows and macOS; permanently deletes on Linux and FreeBSD) |
-| `Shift+F8` / `Shift+Del` | Permanently delete selected file or folder (bypasses Recycle Bin / Trash on all platforms) |
+| `Shift+F8` | Permanently delete selected file or folder (bypasses Recycle Bin / Trash on all platforms) |
 | `F10` | Close panel and return to shell |
 | `Ctrl+H` | Toggle dotfile (hidden file) visibility |
 | `Ctrl+P` | Toggle visibility of inactive pane (shows terminal beneath) |
@@ -105,6 +109,28 @@ Navigation and selection:
 | `0` | Quick-select the VSCode Explorer entry |
 | `a`-`z` | Quick-select additional entries by letter prefix; on Windows, also matches drive letter |
 
+## Make Folder (F7)
+
+Press `F7` to open the Make Folder dialog. The dialog appears centered on the screen with the following fields:
+
+- **Folder name**: Type the name of the new folder to create in the active pane's current directory. Intermediate directories are created automatically (e.g. `a/b/c` creates all three levels).
+- **Link type**: Cycle through `none`, `symbolic`, and `junction` (Windows only) with Space or arrow keys. When set to `symbolic` or `junction`, a symbolic link or junction is created instead of a regular directory.
+- **Target**: When link type is not `none`, enter the target path for the link.
+- **Process multiple names**: Check this box (Space to toggle) to create multiple folders at once by separating names with semicolons (e.g. `src;lib;docs`).
+
+Navigation within the dialog:
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` | Move focus between controls |
+| `Up` / `Down` | Move focus between controls (when not consumed by the focused control) |
+| `Space` | Toggle checkbox / cycle dropdown |
+| `Enter` | Confirm (OK) from any field; on Cancel button, cancels |
+| `Escape` | Cancel and close |
+| Arrow keys | Navigate within input fields (Left/Right) or cycle dropdown options |
+
+After confirming, the folder is created and the cursor moves to the newly created entry. Both panes are refreshed to reflect the change.
+
 ## Multi-Column Display
 
 Each pane can display 1, 2, or 3 columns of files. The default is 2 columns. Files fill columns top-to-bottom, then left-to-right (newspaper style).
@@ -113,17 +139,17 @@ Change the column count via the `vscommander.panelColumns` setting. Inner column
 
 ## Function Key Bar
 
-The bottom row shows function key labels styled after Far Manager:
+The bottom row shows function key labels styled after Far Manager. Labels update dynamically when key bindings are remapped (see [Key Binding Settings](#key-binding-settings)):
 
 | Key | Label | Status |
 |-----|-------|--------|
 | F1 | Help | Label only (future) |
 | F2 | Menu | Label only (future) |
-| F3 | View | Highlights file in VS Code Explorer (blinks 2x); opens in system file manager if outside workspace |
+| F3 | View | Highlights file in VS Code Explorer; opens in system file manager if outside workspace |
 | F4 | Edit | Opens selected file in VS Code editor |
 | F5 | Copy | Label only (future) |
 | F6 | Move | Label only (future) |
-| F7 | Mkdir | Label only (future) |
+| F7 | Mkdir | Opens the Make Folder dialog to create directories or symbolic links |
 | F8 | Del | Moves to Recycle Bin / Trash (Windows, macOS) or permanently deletes (Linux, FreeBSD) with confirmation |
 | F9 | Conf | Label only (future) |
 | F10 | Quit | Closes the panel |
@@ -146,7 +172,7 @@ By default, dotfiles (hidden files starting with `.`) are shown. They appear in 
 
 The bottom row of the panel (above the function key bar) shows a live view of your shell's current line. Keystrokes are forwarded to the shell in real time and the shell's output is rendered directly -- what you see is exactly what the shell produces, with no manual prompt tracking.
 
-Press Enter to execute a typed command. When the command line is empty, pressing Enter opens the selected directory as usual.
+Press Enter to execute a typed command. The panel automatically hides to show the full terminal output while the command runs, then reappears with refreshed directory listings once the command finishes. This lets you see the complete output of your commands and ensures the panel reflects any filesystem changes (created files, deleted folders, etc.). If you press `Ctrl+O` while a command is still running, the panel appears with the file listings as usual, but the command line row shows an animated spinner indicating the command is in progress. Press `Ctrl+O` again to dismiss the panel and return to the terminal. When the command finishes while the panel is showing, the command line returns to its normal shell prompt view. When the command line is empty, pressing Enter opens the selected directory as usual.
 
 ## Half-Panel Mode (Ctrl+P)
 
@@ -172,6 +198,28 @@ Configure VSCommander in VS Code settings (`Ctrl+,` / `Cmd+,`):
 | `vscommander.panelColumns` | number | `2` | Number of file columns per panel (1, 2, or 3) |
 
 Settings are read each time the panel is opened. The `Ctrl+H` toggle overrides `showDotfiles` for the current session only.
+
+### Key Binding Settings
+
+Every panel action can be remapped to a different key. Valid key names include `F1`-`F10`, `Shift+F1`-`Shift+F10`, `Alt+F1`-`Alt+F10`, `Ctrl+H`, `Ctrl+P`, `Alt+Enter`, `Ctrl+Left`, `Ctrl+Right`, `Shift+Delete`.
+
+| Setting | Type | Default | Action |
+|---------|------|---------|--------|
+| `vscommander.keyView` | string | `F3` | View (reveal file in Explorer) |
+| `vscommander.keyEdit` | string | `F4` | Edit (open file in editor) |
+| `vscommander.keyMkdir` | string | `F7` | Mkdir (create directory) |
+| `vscommander.keyDelete` | string | `F8` | Delete (move to Trash) |
+| `vscommander.keyForceDelete` | string | `Shift+F8` | Permanent delete (bypass Trash) |
+| `vscommander.keyQuit` | string | `F10` | Quit (close panel) |
+| `vscommander.keyDriveLeft` | string | `Alt+F1` | Change Drive popup (left pane) |
+| `vscommander.keyDriveRight` | string | `Alt+F2` | Change Drive popup (right pane) |
+| `vscommander.keyToggleDotfiles` | string | `Ctrl+H` | Toggle dotfile visibility |
+| `vscommander.keyTogglePane` | string | `Ctrl+P` | Toggle inactive pane visibility |
+| `vscommander.keyDetach` | string | `Alt+Enter` | Detach/attach fullscreen window |
+| `vscommander.keyResizeLeft` | string | `Ctrl+Left` | Move pane border left |
+| `vscommander.keyResizeRight` | string | `Ctrl+Right` | Move pane border right |
+
+When an action is bound to an F-key (F1-F10), its label appears in the function key bar at the corresponding position.
 
 ## Supported Platforms
 

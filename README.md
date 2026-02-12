@@ -1,3 +1,5 @@
+![VSCommander Screenshot](/media/icon-color.svg)
+
 # VSCommander
 
 The missing yet essential cross-platform dual-panel file manager for Visual Studio Code, heavily inspired by [Far Manager](https://www.farmanager.com/), [Volkov Commander](https://vc.vvv.kyiv.ua/) and [Norton Commander](https://en.wikipedia.org/wiki/Norton_Commander). It runs as a terminal overlay: your shell stays alive underneath, and you toggle the file panel on and off with `Ctrl+O`.
@@ -19,7 +21,8 @@ The project is a work in progress and not published to the marketplace yet.
 - **Drive / mount popup**: `Alt+F1` / `Alt+F2` to switch drives (Windows) or mounted filesystems (Linux, macOS, FreeBSD)
 - **Half-panel mode**: `Ctrl+P` hides one pane to show recent terminal output alongside your files
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
-- **Function key bar**: F3 View, F4 Edit, F8 Delete, F10 Quit, and more
+- **Function key bar**: F3 View, F4 Edit, F7 Mkdir, F8 Delete, F10 Quit, and more
+- **Configurable key bindings**: remap any panel action to a different key via settings
 - **Cross-platform**: Linux, FreeBSD, macOS, and Windows
 
 ## Getting Started
@@ -63,6 +66,7 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `Ctrl+Left` / `Ctrl+Right` | Resize panes |
 | `F3` | View -- highlight file in VS Code Explorer |
 | `F4` | Edit -- open file in VS Code editor |
+| `F7` | Make folder -- create directories or symbolic links |
 | `F8` | Delete selected file or folder |
 | `F10` | Close panel and return to shell |
 | `Alt+Enter` | Detach to fullscreen / reattach |
@@ -76,6 +80,12 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `vscommander.showDotfiles` | `true` | Show hidden files (dotfiles) |
 | `vscommander.clock` | `true` | Show clock in the top-right corner |
 | `vscommander.panelColumns` | `2` | File columns per pane (1, 2, or 3) |
+| `vscommander.keyView` | `F3` | Key binding for View |
+| `vscommander.keyEdit` | `F4` | Key binding for Edit |
+| `vscommander.keyMkdir` | `F7` | Key binding for Mkdir |
+| `vscommander.keyDelete` | `F8` | Key binding for Delete |
+| `vscommander.keyQuit` | `F10` | Key binding for Quit |
+| `vscommander.key*` | -- | All panel actions are remappable (see USER.md) |
 
 ## License
 

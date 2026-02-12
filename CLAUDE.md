@@ -76,6 +76,10 @@ This extension must work on **Linux, FreeBSD, macOS, and Windows**. Every change
 
 `README.md` at the project root is the community-facing project description. **Every major feature must be reflected in USER.md**. The file language is concise, highlighting important and competitive features.
 
+### Workflow
+
+- After each iteration of code changes, run `npm run compile` to check for TypeScript errors before moving on
+
 ### Adding New Features
 
 1. Drawing primitives go in `draw.ts`

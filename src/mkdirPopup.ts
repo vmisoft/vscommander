@@ -128,8 +128,7 @@ export class MkdirPopup extends Popup {
                         this.close();
                         return { action: 'close', confirm: false };
                     }
-                    this.close();
-                    return { action: 'close', confirm: true };
+                    return this.closeWithConfirm();
                 }
                 if (result.consumed) {
                     return { action: 'consumed' };
@@ -139,8 +138,7 @@ export class MkdirPopup extends Popup {
         }
 
         if (data === '\r' && this.focusIndex !== 4) {
-            this.close();
-            return { action: 'close', confirm: true };
+            return this.closeWithConfirm();
         }
 
         if (data === '\x1b[A') {
@@ -190,6 +188,65 @@ export class MkdirPopup extends Popup {
     private resetActiveBlink(): void {
         this.nameInput.resetBlink();
         this.targetInput.resetBlink();
+    }
+
+    protected override onMouseDown(fbRow: number, fbCol: number): PopupInputResult | null {
+        const boxRow = this.padV;
+        const relRow = fbRow - boxRow;
+
+        if (relRow === 2) {
+            this.focusIndex = 0;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        if (relRow === 4) {
+            this.focusIndex = 1;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        if (relRow === 5) {
+            this.focusIndex = 2;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        if (relRow === 6) {
+            this.focusIndex = 3;
+            this.multipleCheckbox.checked = !this.multipleCheckbox.checked;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+        if (relRow === 8) {
+            this.focusIndex = 4;
+            const idx = this.hitTestButton(fbRow, fbCol);
+            if (idx >= 0) {
+                this.buttons.selectedIndex = idx;
+                this.mouseDownButton = idx;
+            }
+            return { action: 'consumed' };
+        }
+        return null;
+    }
+
+    protected override hitTestButton(fbRow: number, fbCol: number): number {
+        const boxRow = this.padV;
+        const relRow = fbRow - boxRow;
+        if (relRow === 8) {
+            const localCol = fbCol - this.padH - 1;
+            if (localCol >= 0) {
+                const innerW = this.dialogWidth - 2;
+                return this.buttons.hitTestCol(localCol, innerW);
+            }
+        }
+        return -1;
+    }
+
+    protected override onButtonConfirm(buttonIndex: number): PopupInputResult {
+        this.buttons.selectedIndex = buttonIndex;
+        if (buttonIndex === 1) {
+            this.close();
+            return { action: 'close', confirm: false };
+        }
+        return this.closeWithConfirm();
     }
 
     get result(): MkdirResult {
@@ -253,7 +310,7 @@ export class MkdirPopup extends Popup {
         const cbFocused = this.focusIndex === 3;
         const cbStyle = cbFocused ? t.dialogInput.idle : t.dialogBody.idle;
         fb.blit(boxRow + 6, boxCol + 2, this.multipleCheckbox.renderToBuffer(t.dialogBody.idle, cbStyle, cbFocused));
-        fb.write(boxRow + 6, boxCol + 14, 'm', cbFocused ? t.dialogHotkey.selected : t.dialogHotkey.idle);
+        fb.write(boxRow + 6, boxCol + 14, 'm', t.dialogHotkey.idle);
 
         // Row 7: separator
         fb.drawSeparator(boxRow + 7, boxCol, w, bodyStyle, MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
@@ -275,29 +332,27 @@ export class MkdirPopup extends Popup {
     render(rows: number, cols: number, theme: Theme): string {
         if (!this.active) return '';
         const fb = this.renderToBuffer(theme);
-        const screenRow = Math.floor((rows - fb.height) / 2) + 1;
-        const screenCol = Math.floor((cols - fb.width) / 2) + 1;
-        return fb.toAnsi(screenRow, screenCol);
+        const baseRow = Math.floor((rows - fb.height) / 2) + 1;
+        const baseCol = Math.floor((cols - fb.width) / 2) + 1;
+        this.setScreenPosition(baseRow, baseCol, fb.width, fb.height);
+        return fb.toAnsi(this.screenRow, this.screenCol);
     }
 
     renderMkdirBlink(rows: number, cols: number, theme: Theme): string {
         if (!this.active) return '';
         const t = theme;
-        const w = this.dialogWidth;
-        const totalW = w + 2 * this.padH;
-        const totalH = DIALOG_HEIGHT + 2 * this.padV;
-        const startCol = Math.floor((cols - totalW) / 2) + 1 + this.padH;
-        const startRow = Math.floor((rows - totalH) / 2) + 1 + this.padV;
-        const nameCol = startCol + 2;
-        const fieldCol = startCol + 1 + LABEL_WIDTH;
+        const boxStartRow = this.screenRow + this.padV;
+        const boxStartCol = this.screenCol + this.padH;
+        const nameCol = boxStartCol + 2;
+        const fieldCol = boxStartCol + 1 + LABEL_WIDTH;
         const inputStyle = t.dialogInput.idle;
         const cursorStyle = t.dialogInputCursor.idle;
 
         let out = '';
         if (this.focusIndex === 0) {
-            out += this.nameInput.renderBlink(startRow + 2, nameCol, inputStyle, cursorStyle);
+            out += this.nameInput.renderBlink(boxStartRow + 2, nameCol, inputStyle, cursorStyle);
         } else if (this.focusIndex === 2) {
-            out += this.targetInput.renderBlink(startRow + 5, fieldCol, inputStyle, cursorStyle);
+            out += this.targetInput.renderBlink(boxStartRow + 5, fieldCol, inputStyle, cursorStyle);
         }
         out += hideCursor();
         return out;

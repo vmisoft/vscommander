@@ -51,8 +51,7 @@ export class DrivePopup extends Popup {
         }
 
         if (data === '\r') {
-            this.close();
-            return { action: 'close', confirm: true };
+            return this.closeWithConfirm();
         }
 
         if (data === '\x1b[A' || data === '\x1b[D') {
@@ -137,6 +136,44 @@ export class DrivePopup extends Popup {
         return { action: 'consumed' };
     }
 
+    override handleMouseScroll(up: boolean): PopupInputResult {
+        if (up && this.cursor > 0) {
+            this.cursor--;
+        } else if (!up && this.cursor < this.entries.length - 1) {
+            this.cursor++;
+        }
+        return { action: 'consumed' };
+    }
+
+    protected override onMouseDown(fbRow: number, _fbCol: number): PopupInputResult | null {
+        const groups = this.getGroupedEntries();
+        let contentRow = 2;
+        let entryIdx = 0;
+        for (let si = 0; si < groups.length; si++) {
+            if (si > 0) contentRow++;
+            for (let ri = 0; ri < groups[si].length; ri++) {
+                if (fbRow === contentRow) {
+                    this.cursor = entryIdx;
+                    return { action: 'consumed' };
+                }
+                contentRow++;
+                entryIdx++;
+            }
+        }
+        return null;
+    }
+
+    private getGroupedEntries(): DriveEntry[][] {
+        const drives = this.entries.filter(e => e.group === 'drive');
+        const homes = this.entries.filter(e => e.group === 'home');
+        const workspaces = this.entries.filter(e => e.group === 'workspace');
+        const sections: DriveEntry[][] = [];
+        if (drives.length > 0) sections.push(drives);
+        if (homes.length > 0) sections.push(homes);
+        if (workspaces.length > 0) sections.push(workspaces);
+        return sections;
+    }
+
     get selectedEntry(): DriveEntry | undefined {
         return this.entries[this.cursor];
     }
@@ -204,7 +241,25 @@ export class DrivePopup extends Popup {
     render(anchorRow: number, anchorCol: number, theme: Theme, maxWidth?: number): string {
         if (!this.active || this.entries.length === 0) return '';
         const { table, styles } = this.buildTable(theme);
-        return table.render(anchorRow, anchorCol, styles, maxWidth);
+
+        const popupOffset = 2;
+        const rightEdge = maxWidth ? anchorCol + maxWidth - 1 : 999;
+        let popupCol = anchorCol + popupOffset;
+
+        let fb = table.renderToBuffer(styles);
+        if (fb.width === 0) return '';
+
+        if (popupCol + fb.width - 1 > rightEdge) {
+            popupCol = rightEdge - fb.width + 1;
+            if (popupCol < 1) {
+                popupCol = 1;
+                fb = table.renderToBuffer(styles, rightEdge);
+                if (fb.width === 0) return '';
+            }
+        }
+
+        this.setScreenPosition(anchorRow, popupCol, fb.width, fb.height);
+        return fb.toAnsi(this.screenRow, this.screenCol);
     }
 
     static buildEntries(workspaceFolders: string[]): DriveEntry[] {

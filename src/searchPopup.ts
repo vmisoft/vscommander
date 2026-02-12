@@ -94,9 +94,16 @@ export class SearchPopup extends Popup {
         return fb;
     }
 
+    protected override onMouseDown(_fbRow: number, _fbCol: number): PopupInputResult | null {
+        return null;
+    }
+
     render(anchorRow: number, anchorCol: number, theme: Theme): string {
         if (!this.active) return '';
-        return this.renderToBuffer(theme).toAnsi(anchorRow, anchorCol + POPUP_COL_OFFSET);
+        const fb = this.renderToBuffer(theme);
+        const baseCol = anchorCol + POPUP_COL_OFFSET;
+        this.setScreenPosition(anchorRow, baseCol, fb.width, fb.height);
+        return fb.toAnsi(this.screenRow, this.screenCol);
     }
 
     get hasBlink(): boolean {
@@ -107,11 +114,9 @@ export class SearchPopup extends Popup {
         if (!this.active) return '';
 
         const t = theme;
-        const popupCol = anchorCol + POPUP_COL_OFFSET;
-        const popupRow = anchorRow;
 
         let out = this.input.renderBlink(
-            popupRow + 1, popupCol + 2,
+            this.screenRow + 1, this.screenCol + 2,
             t.searchInput.idle, t.searchCursor.idle,
         );
 

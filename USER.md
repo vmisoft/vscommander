@@ -6,10 +6,11 @@ A dual-panel file manager inside your VS Code editor, styled after Far Manager. 
 
 ## Getting Started
 
-1. Click the VSCommander icon in the activity bar (left sidebar), then click **Open VSCommander**
-2. Or: open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **VSCommander: Open Terminal**
-3. The file manager panel opens in an editor tab with your default shell running underneath
-4. Press `Ctrl+O` to toggle between the file manager panel and the shell
+1. Press `Alt+C` to open VSCommander (configurable in VS Code keyboard shortcuts)
+2. Or: click the VSCommander icon in the activity bar (left sidebar), then click **Open VSCommander**
+3. Or: open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **VSCommander: Open Terminal**
+4. The file manager panel opens in an editor tab with your default shell running underneath
+5. Press `Ctrl+O` to toggle between the file manager panel and the shell
 
 ## Panel Layout
 
@@ -36,7 +37,7 @@ $ ls -la                                                <- command line
 - **Info bar**: Each pane shows its selected file's name, size (or `<DIR>` for directories), and modification date
 - **Bottom border**: Each pane shows its own summary stats (total bytes, file count, folder count)
 - **Command line**: Your shell prompt where you can type commands
-- **Function key bar**: F1-F10 labels at the very bottom (F10 closes the panel)
+- **Function key bar**: F1-F10 labels at the very bottom (F10 quits VSCommander)
 
 ## Keyboard Shortcuts
 
@@ -63,7 +64,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `F7` | Open Make Folder dialog |
 | `F8` | Delete selected file or folder (moves to Recycle Bin / Trash on Windows and macOS; permanently deletes on Linux and FreeBSD) |
 | `Shift+F8` | Permanently delete selected file or folder (bypasses Recycle Bin / Trash on all platforms) |
-| `F10` | Close panel and return to shell |
+| `F10` | Quit VSCommander (with confirmation) |
 | `Ctrl+H` | Toggle dotfile (hidden file) visibility |
 | `Ctrl+P` | Toggle visibility of inactive pane (shows terminal beneath) |
 | `Ctrl+Left` / `Ctrl+Right` | Move the border between left and right panes |
@@ -152,7 +153,7 @@ The bottom row shows function key labels styled after Far Manager. Labels update
 | F7 | Mkdir | Opens the Make Folder dialog to create directories or symbolic links |
 | F8 | Del | Moves to Recycle Bin / Trash (Windows, macOS) or permanently deletes (Linux, FreeBSD) with confirmation |
 | F9 | Conf | Label only (future) |
-| F10 | Quit | Closes the panel |
+| F10 | Quit | Quits VSCommander (with confirmation) |
 
 ## Info Bar
 
@@ -210,7 +211,7 @@ Every panel action can be remapped to a different key. Valid key names include `
 | `vscommander.keyMkdir` | string | `F7` | Mkdir (create directory) |
 | `vscommander.keyDelete` | string | `F8` | Delete (move to Trash) |
 | `vscommander.keyForceDelete` | string | `Shift+F8` | Permanent delete (bypass Trash) |
-| `vscommander.keyQuit` | string | `F10` | Quit (close panel) |
+| `vscommander.keyQuit` | string | `F10` | Quit VSCommander |
 | `vscommander.keyDriveLeft` | string | `Alt+F1` | Change Drive popup (left pane) |
 | `vscommander.keyDriveRight` | string | `Alt+F2` | Change Drive popup (right pane) |
 | `vscommander.keyToggleDotfiles` | string | `Ctrl+H` | Toggle dotfile visibility |
@@ -220,6 +221,23 @@ Every panel action can be remapped to a different key. Valid key names include `
 | `vscommander.keyResizeRight` | string | `Ctrl+Right` | Move pane border right |
 
 When an action is bound to an F-key (F1-F10), its label appears in the function key bar at the corresponding position.
+
+## Mouse
+
+Mouse tracking is enabled while the panel is visible and disabled when you switch to the shell, so normal text selection works outside the panel.
+
+| Action | Effect |
+|--------|--------|
+| Left-click on a file entry | Moves cursor to that entry; clicking the inactive pane switches focus to it |
+| Double-click on a file entry | Opens the directory or file (same as Enter) |
+| Click and drag in file area | Cursor follows the mouse as you drag |
+| Left-click on the F-key bar | Triggers the corresponding function key action |
+| Left-click on popup buttons | Activates the clicked button (Confirm, Cancel, OK, etc.) |
+| Left-click on popup controls | Focuses the clicked field (Make Folder dialog) |
+| Drag popup by body area | Moves the popup around the screen |
+| Left-click outside a popup | Closes the popup |
+| Scroll wheel | Moves cursor up/down by 3 entries; scrolls the Drive popup list when open |
+| Middle-click | Acts as Enter (open directory, open file, or execute command) |
 
 ## Supported Platforms
 

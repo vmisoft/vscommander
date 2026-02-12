@@ -129,6 +129,10 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
             const wasSearchActive = this.panel.isSearchActive;
             const result = this.panel.handleInput(data);
             switch (result.action) {
+                case 'quit':
+                    this.shell?.kill();
+                    this.closeEmitter.fire();
+                    return;
                 case 'close':
                     this.stopBlinkTimer();
                     this.stopCmdBlinkTimer();

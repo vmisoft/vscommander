@@ -22,6 +22,7 @@ The project is a work in progress and not published to the marketplace yet.
 - **Half-panel mode**: `Ctrl+P` hides one pane to show recent terminal output alongside your files
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
 - **Function key bar**: F3 View, F4 Edit, F7 Mkdir, F8 Delete, F10 Quit, and more
+- **Mouse support**: click to select files, switch panes, activate popup buttons, scroll with the wheel
 - **Configurable key bindings**: remap any panel action to a different key via settings
 - **Cross-platform**: Linux, FreeBSD, macOS, and Windows
 

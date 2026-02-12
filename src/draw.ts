@@ -26,6 +26,14 @@ export function leaveAltScreen(): string {
     return '\x1b[?1049l';
 }
 
+export function enableMouse(): string {
+    return '\x1b[?1002h\x1b[?1006h';
+}
+
+export function disableMouse(): string {
+    return '\x1b[?1006l\x1b[?1002l';
+}
+
 export function sgr(code: number): string {
     return `${ESC}${code}m`;
 }

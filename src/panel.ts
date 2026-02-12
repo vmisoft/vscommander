@@ -2,12 +2,14 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     enterAltScreen, leaveAltScreen, clearScreen, showCursor, hideCursor,
-    resetStyle, moveTo, bgRgb, DBOX
+    resetStyle, moveTo, bgRgb, BOX, DBOX, MBOX, enableMouse, disableMouse
 } from './draw';
-import { PanelSettings, KeyBindings, matchesKeyBinding, getFKeyNumber } from './settings';
+import { MouseEvent, parseMouseEvent } from './mouse';
+import { PanelSettings, TextStyle, KeyBindings, matchesKeyBinding, getFKeyNumber } from './settings';
 import { Layout, PaneGeometry } from './types';
-import { applyStyle, computeLayout } from './helpers';
+import { applyStyle, computeLayout, entryRenderStyle } from './helpers';
 import { Pane } from './pane';
+import { Popup, PopupInputResult } from './popup';
 import { SearchPopup } from './searchPopup';
 import { DrivePopup } from './drivePopup';
 import { ConfirmPopup } from './confirmPopup';
@@ -15,6 +17,7 @@ import { MkdirPopup } from './mkdirPopup';
 import { TerminalBuffer } from './terminalBuffer';
 
 export type PanelInputResult =
+    | { action: 'quit' }
     | { action: 'close' }
     | { action: 'redraw'; data: string; chdir?: string }
     | { action: 'input'; data: string; redraw: string }
@@ -46,6 +49,9 @@ export class Panel {
     splitOffset = 0;
     waitingMode = false;
     spinnerFrame = 0;
+    private lastClickTime = 0;
+    private lastClickEntry = -1;
+    private lastClickPane: 'left' | 'right' = 'left';
 
     constructor(cols: number, rows: number, cwd: string, settings: PanelSettings) {
         this.cols = cols;
@@ -58,19 +64,20 @@ export class Panel {
         this.confirmPopup = new ConfirmPopup();
         this.mkdirPopup = new MkdirPopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
+        this.syncPopupBounds();
     }
 
     show(): string {
         this.visible = true;
         this.left.refresh(this.settings);
         this.right.refresh(this.settings);
-        return enterAltScreen() + this.render();
+        return enterAltScreen() + enableMouse() + this.render();
     }
 
     hide(): string {
         this.visible = false;
         this.waitingMode = false;
-        return showCursor() + leaveAltScreen();
+        return disableMouse() + showCursor() + leaveAltScreen();
     }
 
     renderSpinnerUpdate(): string {
@@ -84,10 +91,18 @@ export class Panel {
         this.cols = cols;
         this.rows = rows;
         this.termBuffer.resize(cols, rows);
+        this.syncPopupBounds();
         if (this.visible) {
-            return leaveAltScreen() + enterAltScreen() + this.render();
+            return leaveAltScreen() + enterAltScreen() + enableMouse() + this.render();
         }
         return '';
+    }
+
+    private syncPopupBounds(): void {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup]) {
+            p.termRows = this.rows;
+            p.termCols = this.cols;
+        }
     }
 
     private get leftWidth(): number {
@@ -103,6 +118,14 @@ export class Panel {
     get hasActivePopup(): boolean {
         return this.searchPopup.active || this.drivePopup.active
             || this.confirmPopup.active || this.mkdirPopup.active;
+    }
+
+    private get activePopupObj(): Popup | null {
+        if (this.confirmPopup.active) return this.confirmPopup;
+        if (this.mkdirPopup.active) return this.mkdirPopup;
+        if (this.drivePopup.active) return this.drivePopup;
+        if (this.searchPopup.active) return this.searchPopup;
+        return null;
     }
 
     get activePaneObj(): Pane {
@@ -181,63 +204,28 @@ export class Panel {
         const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
         const pageCapacity = listHeight * activePaneGeo.numCols;
 
-        if (data.startsWith('\x1b[M') || data.startsWith('\x1b[<')) {
+        if (data.startsWith('\x1b[M')) {
+            return { action: 'none' };
+        }
+
+        if (data.startsWith('\x1b[<')) {
+            const mouse = parseMouseEvent(data);
+            if (mouse) {
+                return this.handleMouse(mouse, layout, activePaneGeo);
+            }
             return { action: 'none' };
         }
 
         if (this.confirmPopup.active) {
-            const result = this.confirmPopup.handleInput(data);
-            if (result.action === 'close' && result.confirm) {
-                const action = this.confirmPopup.invokeConfirm() as PanelInputResult | undefined;
-                if (action) return action;
-            }
-            return { action: 'redraw', data: this.render() };
+            return this.resolvePopupResult(this.confirmPopup.handleInput(data));
         }
 
         if (this.mkdirPopup.active) {
-            const result = this.mkdirPopup.handleInput(data);
-            if (result.action === 'close' && result.confirm) {
-                const r = this.mkdirPopup.result;
-                return {
-                    action: 'mkdir',
-                    cwd: pane.cwd,
-                    folderName: r.folderName,
-                    linkType: r.linkType,
-                    linkTarget: r.linkTarget,
-                    multipleNames: r.multipleNames,
-                };
-            }
-            return { action: 'redraw', data: this.render() };
+            return this.resolvePopupResult(this.mkdirPopup.handleInput(data));
         }
 
         if (this.drivePopup.active) {
-            const result = this.drivePopup.handleInput(data);
-            if (result.action === 'consumed') {
-                return { action: 'redraw', data: this.render() };
-            }
-            if (result.action === 'close') {
-                let chdir: string | undefined;
-                if (result.confirm) {
-                    const selected = this.drivePopup.selectedEntry;
-                    if (selected) {
-                        const target = this.drivePopup.targetPane === 'left' ? this.left : this.right;
-                        if (selected.path) {
-                            target.cwd = selected.path;
-                            target.entries = Pane.readDir(selected.path, this.settings);
-                        } else {
-                            target.cwd = selected.label;
-                            target.entries = [];
-                        }
-                        target.cursor = 0;
-                        target.scroll = 0;
-                        if (this.drivePopup.targetPane === this.activePane && selected.path) {
-                            chdir = selected.path;
-                        }
-                    }
-                }
-                return { action: 'redraw', data: this.render(), chdir };
-            }
-            return { action: 'redraw', data: this.render() };
+            return this.resolvePopupResult(this.drivePopup.handleInput(data));
         }
 
         if (this.searchPopup.active) {
@@ -260,12 +248,12 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, this.settings.keys.driveLeft)) {
-            this.drivePopup.open('left', this.settings);
+            this.openDrivePopup('left');
             return { action: 'redraw', data: this.render() };
         }
 
         if (matchesKeyBinding(data, this.settings.keys.driveRight)) {
-            this.drivePopup.open('right', this.settings);
+            this.openDrivePopup('right');
             return { action: 'redraw', data: this.render() };
         }
 
@@ -278,7 +266,18 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, this.settings.keys.quit)) {
-            return { action: 'close' };
+            this.confirmPopup.openWith({
+                title: 'Quit',
+                bodyLines: ['Do you want to quit VSCommander?'],
+                buttons: ['Yes', 'No'],
+                warning: false,
+                onConfirm: (btnIdx) => {
+                    if (btnIdx === 0) {
+                        return { action: 'quit' };
+                    }
+                },
+            });
+            return { action: 'redraw', data: this.render() };
         }
 
         if (matchesKeyBinding(data, this.settings.keys.view)) {
@@ -298,7 +297,7 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, this.settings.keys.mkdir)) {
-            this.mkdirPopup.openWith('', this.cols);
+            this.openMkdirPopup('');
             return { action: 'redraw', data: this.render() };
         }
 
@@ -524,6 +523,212 @@ export class Panel {
         return { action: 'none' };
     }
 
+    private handleMouse(mouse: MouseEvent, layout: Layout, activePaneGeo: PaneGeometry): PanelInputResult {
+        const popup = this.activePopupObj;
+
+        if (mouse.isRelease) {
+            if (popup && mouse.button === 0) {
+                return this.resolvePopupResult(popup.handleMouseUp(mouse.row, mouse.col));
+            }
+            return { action: 'none' };
+        }
+
+        if (popup) {
+            if (mouse.isMotion) {
+                if (popup.handleMouseMotion(mouse.row, mouse.col)) {
+                    return { action: 'redraw', data: this.render() };
+                }
+                return { action: 'none' };
+            }
+            if (mouse.button === 64 || mouse.button === 65) {
+                popup.handleMouseScroll(mouse.button === 64);
+                return { action: 'redraw', data: this.render() };
+            }
+            if (mouse.button !== 0) return { action: 'none' };
+            return this.resolvePopupResult(popup.handleMouseDown(mouse.row, mouse.col));
+        }
+
+        const pane = this.activePaneObj;
+        const listHeight = layout.listHeight;
+        const pageCapacity = listHeight * activePaneGeo.numCols;
+
+        if (mouse.isMotion && mouse.button === 0) {
+            if (mouse.row >= layout.listStart && mouse.row < layout.listStart + listHeight) {
+                return this.handleMouseFileArea(mouse.row, mouse.col, layout, true);
+            }
+            return { action: 'none' };
+        }
+
+        if (mouse.isMotion) return { action: 'none' };
+
+        if (mouse.button === 64 || mouse.button === 65) {
+            this.handleScrollWheel(mouse.button, pane, listHeight, pageCapacity);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (mouse.button === 1) {
+            return this.handleInput('\r');
+        }
+
+        if (mouse.button !== 0) return { action: 'none' };
+
+        if (mouse.row === layout.fkeyRow) {
+            return this.handleMouseFKeyBar(mouse.col);
+        }
+
+        if (mouse.row >= layout.listStart && mouse.row < layout.listStart + listHeight) {
+            return this.handleMouseFileArea(mouse.row, mouse.col, layout, false);
+        }
+
+        return { action: 'none' };
+    }
+
+    private resolvePopupResult(result: PopupInputResult): PanelInputResult {
+        if (result.action === 'close' && result.confirm && result.command) {
+            const cmd = result.command as PanelInputResult;
+            if (cmd.action === 'redraw') {
+                return { ...cmd, data: this.render() };
+            }
+            return cmd;
+        }
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openDrivePopup(target: 'left' | 'right'): void {
+        this.drivePopup.open(target, this.settings);
+        this.drivePopup.setConfirmAction(() => {
+            const selected = this.drivePopup.selectedEntry;
+            if (!selected) return undefined;
+            const pane = this.drivePopup.targetPane === 'left' ? this.left : this.right;
+            if (selected.path) {
+                pane.cwd = selected.path;
+                pane.entries = Pane.readDir(selected.path, this.settings);
+            } else {
+                pane.cwd = selected.label;
+                pane.entries = [];
+            }
+            pane.cursor = 0;
+            pane.scroll = 0;
+            let chdir: string | undefined;
+            if (this.drivePopup.targetPane === this.activePane && selected.path) {
+                chdir = selected.path;
+            }
+            return { action: 'redraw', chdir };
+        });
+    }
+
+    private openMkdirPopup(initial: string): void {
+        this.mkdirPopup.openWith(initial, this.cols);
+        this.mkdirPopup.setConfirmAction(() => {
+            const r = this.mkdirPopup.result;
+            return {
+                action: 'mkdir',
+                cwd: this.activePaneObj.cwd,
+                folderName: r.folderName,
+                linkType: r.linkType,
+                linkTarget: r.linkTarget,
+                multipleNames: r.multipleNames,
+            };
+        });
+    }
+
+    private handleScrollWheel(button: number, pane: Pane, listHeight: number, pageCapacity: number): void {
+        const step = 3;
+        if (button === 64) {
+            pane.cursor = Math.max(0, pane.cursor - step);
+            if (pane.cursor < pane.scroll) {
+                pane.scroll = pane.cursor;
+            }
+        } else {
+            pane.cursor = Math.min(pane.entries.length - 1, pane.cursor + step);
+            if (pane.cursor >= pane.scroll + pageCapacity) {
+                pane.scroll = pane.cursor - pageCapacity + 1;
+            }
+        }
+    }
+
+    private handleMouseFileArea(row: number, col: number, layout: Layout, isDrag: boolean): PanelInputResult {
+        const leftGeo = layout.leftPane;
+        const rightGeo = layout.rightPane;
+        let targetPane: 'left' | 'right';
+        let geo: PaneGeometry;
+
+        if (col >= leftGeo.startCol && col < leftGeo.startCol + leftGeo.width) {
+            targetPane = 'left';
+            geo = leftGeo;
+        } else if (col >= rightGeo.startCol && col < rightGeo.startCol + rightGeo.width) {
+            targetPane = 'right';
+            geo = rightGeo;
+        } else {
+            return { action: 'none' };
+        }
+
+        let chdir: string | undefined;
+        if (targetPane !== this.activePane) {
+            this.activePane = targetPane;
+            chdir = this.activePaneObj.cwd;
+        }
+
+        const pane = targetPane === 'left' ? this.left : this.right;
+        const listHeight = layout.listHeight;
+        const fileRow = row - layout.listStart;
+
+        let fileCol = -1;
+        for (let c = 0; c < geo.numCols; c++) {
+            const start = geo.colStarts[c];
+            const end = start + geo.colWidths[c];
+            if (col >= start && col < end) {
+                fileCol = c;
+                break;
+            }
+        }
+        if (fileCol < 0) {
+            for (let c = 0; c < geo.dividerCols.length; c++) {
+                if (col === geo.dividerCols[c]) {
+                    fileCol = c;
+                    break;
+                }
+            }
+        }
+        if (fileCol < 0) return { action: 'redraw', data: this.render(), chdir };
+
+        const idx = pane.scroll + fileCol * listHeight + fileRow;
+        if (idx >= 0 && idx < pane.entries.length) {
+            if (!isDrag) {
+                const now = Date.now();
+                if (idx === this.lastClickEntry && targetPane === this.lastClickPane
+                    && now - this.lastClickTime < 400) {
+                    this.lastClickTime = 0;
+                    this.lastClickEntry = -1;
+                    pane.cursor = idx;
+                    return this.handleInput('\r');
+                }
+                this.lastClickTime = now;
+                this.lastClickEntry = idx;
+                this.lastClickPane = targetPane;
+            }
+            pane.cursor = idx;
+        }
+
+        return { action: 'redraw', data: this.render(), chdir };
+    }
+
+    private handleMouseFKeyBar(col: number): PanelInputResult {
+        const slotWidth = Math.floor(this.cols / 10);
+        const slot = Math.min(9, Math.floor((col - 1) / slotWidth));
+        const fkeyNum = slot + 1;
+        const fkeySeqs: Record<number, string> = {
+            1: '\x1bOP', 2: '\x1bOQ', 3: '\x1bOR', 4: '\x1bOS',
+            5: '\x1b[15~', 6: '\x1b[17~', 7: '\x1b[18~', 8: '\x1b[19~',
+            9: '\x1b[20~', 10: '\x1b[21~',
+        };
+        const seq = fkeySeqs[fkeyNum];
+        if (seq) {
+            return this.handleInput(seq);
+        }
+        return { action: 'none' };
+    }
+
     private render(): string {
         const layout = this.getLayout();
         const t = this.settings.theme;
@@ -556,16 +761,22 @@ export class Panel {
         out.push(this.renderCommandLine(layout));
         out.push(this.renderFKeyBar(layout));
 
+        const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
+
         if (this.searchPopup.active) {
             const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.searchPopup.render(layout.bottomRow, activePaneGeo.startCol, t));
+            out.push(this.searchPopup.renderShadow(cellAt));
         } else if (this.mkdirPopup.active) {
             out.push(this.mkdirPopup.render(this.rows, this.cols, t));
+            out.push(this.mkdirPopup.renderShadow(cellAt));
         } else if (this.confirmPopup.active) {
             out.push(this.confirmPopup.render(this.rows, this.cols, t));
+            out.push(this.confirmPopup.renderShadow(cellAt));
         } else if (this.drivePopup.active) {
             const targetGeo = this.drivePopup.targetPane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.drivePopup.render(layout.listStart, targetGeo.startCol, t, targetGeo.width));
+            out.push(this.drivePopup.renderShadow(cellAt));
         } else if (this.waitingMode) {
             out.push(hideCursor());
         } else {
@@ -618,6 +829,100 @@ export class Panel {
             });
         }
         return { action: 'redraw', data: this.render() };
+    }
+
+    private getCellAt(row: number, col: number, layout: Layout): { ch: string; style: TextStyle } {
+        const t = this.settings.theme;
+        const border: TextStyle = t.border.idle;
+
+        if (row === layout.fkeyRow) {
+            return { ch: ' ', style: t.fkeyLabel.idle };
+        }
+        if (row === layout.cmdRow) {
+            return { ch: ' ', style: t.commandLine.idle };
+        }
+
+        const leftIsActive = this.activePane === 'left';
+        let pane: Pane;
+        let geo: PaneGeometry;
+        let isActive: boolean;
+        if (col <= layout.leftPane.startCol + layout.leftPane.width - 1) {
+            pane = this.left;
+            geo = layout.leftPane;
+            isActive = leftIsActive;
+        } else {
+            pane = this.right;
+            geo = layout.rightPane;
+            isActive = !leftIsActive;
+        }
+
+        const leftEdge = geo.startCol;
+        const rightEdge = geo.startCol + geo.width - 1;
+
+        if (row === layout.topRow) {
+            if (col === leftEdge) return { ch: DBOX.topLeft, style: border };
+            if (col === rightEdge) return { ch: DBOX.topRight, style: border };
+            return { ch: DBOX.horizontal, style: border };
+        }
+
+        if (row === layout.bottomRow) {
+            if (col === leftEdge) return { ch: DBOX.bottomLeft, style: border };
+            if (col === rightEdge) return { ch: DBOX.bottomRight, style: border };
+            return { ch: DBOX.horizontal, style: border };
+        }
+
+        if (row === layout.separatorRow) {
+            if (col === leftEdge) return { ch: MBOX.vertDoubleRight, style: border };
+            if (col === rightEdge) return { ch: MBOX.vertDoubleLeft, style: border };
+            for (const dc of geo.dividerCols) {
+                if (col === dc) return { ch: BOX.teeUp, style: border };
+            }
+            return { ch: BOX.horizontal, style: border };
+        }
+
+        if (col === leftEdge || col === rightEdge) {
+            return { ch: DBOX.vertical, style: border };
+        }
+
+        if (row === layout.headerRow) {
+            for (const dc of geo.dividerCols) {
+                if (col === dc) return { ch: BOX.vertical, style: border };
+            }
+            return { ch: ' ', style: t.header.idle };
+        }
+
+        if (row === layout.infoRow) {
+            return { ch: ' ', style: t.info.idle };
+        }
+
+        if (row >= layout.listStart && row < layout.separatorRow) {
+            for (const dc of geo.dividerCols) {
+                if (col === dc) return { ch: BOX.vertical, style: border };
+            }
+            let fileCol = -1;
+            for (let i = 0; i < geo.numCols; i++) {
+                if (col >= geo.colStarts[i] && col < geo.colStarts[i] + geo.colWidths[i]) {
+                    fileCol = i;
+                    break;
+                }
+            }
+            if (fileCol >= 0) {
+                const fileRow = row - layout.listStart;
+                const idx = pane.scroll + fileCol * layout.listHeight + fileRow;
+                if (idx < pane.entries.length) {
+                    const entry = pane.entries[idx];
+                    const isCursor = isActive && idx === pane.cursor;
+                    const rs = entryRenderStyle(entry, t);
+                    const style = isCursor ? rs.selected : rs.idle;
+                    const charPos = col - geo.colStarts[fileCol];
+                    const ch = charPos < entry.name.length ? entry.name[charPos] : ' ';
+                    return { ch, style };
+                }
+                return { ch: ' ', style: border };
+            }
+        }
+
+        return { ch: ' ', style: border };
     }
 
     private renderCmdCursor(layout: Layout): string {

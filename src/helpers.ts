@@ -142,3 +142,16 @@ export function stripAnsi(str: string): string {
 export function displayWidth(str: string): number {
     return stripAnsi(str).length;
 }
+
+export function dimHex(hex: string): string {
+    const r = Math.floor(parseInt(hex.slice(0, 2), 16) / 2);
+    const g = Math.floor(parseInt(hex.slice(2, 4), 16) / 2);
+    const b = Math.floor(parseInt(hex.slice(4, 6), 16) / 2);
+    return r.toString(16).padStart(2, '0')
+         + g.toString(16).padStart(2, '0')
+         + b.toString(16).padStart(2, '0');
+}
+
+export function dimStyle(s: TextStyle): TextStyle {
+    return { fg: dimHex(s.fg), bg: dimHex(s.bg), bold: false };
+}

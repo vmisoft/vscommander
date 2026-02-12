@@ -22,6 +22,10 @@
     ],
     "keybindings": [
       {
+        "command": "vscommander.open",
+        "key": "alt+c"
+      },
+      {
         "command": "vscommander.toggle",
         "key": "ctrl+o",
         "when": "terminalFocus"
@@ -54,6 +58,12 @@
         "command": "workbench.action.terminal.sendSequence",
         "args": { "text": "\u001b[1;5C" },
         "key": "ctrl+right",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001b[1;5B" },
+        "key": "ctrl+down",
         "when": "terminalFocus && vscommander.panelVisible"
       },
       {

@@ -18,9 +18,9 @@ Press F5 in VS Code to launch the Extension Development Host. Run "VSCommander: 
 
 ```
 src/
-  extension.ts   Entry point — Pseudoterminal wiring, command registration, shell ↔ panel routing
+  extension.ts   Entry point — Pseudoterminal wiring, command registration, shell ↔ panel routing. **IMPORTANT** This file should be kept as small as possible, the logic should be split accross components.
   shell.ts       node-pty shell proxy — spawn, resize, data forwarding, kill
-  panel.ts       Panel state, directory reading, rendering, keyboard input handling
+  panel.ts       Panel state, directory reading, rendering, keyboard input handling. **IMPORTANT** This file should be kept as small as possible, the logic should be split accross components.
   draw.ts        Low-level ANSI escape sequence primitives (cursor, box, color, alt screen)
 ```
 

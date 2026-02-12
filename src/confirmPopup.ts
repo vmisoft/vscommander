@@ -8,6 +8,7 @@ export interface ConfirmPopupConfig {
     title: string;
     bodyLines: string[];
     buttons: string[];
+    warning?: boolean;
     onConfirm: (buttonIndex: number) => unknown;
 }
 
@@ -43,8 +44,7 @@ export class ConfirmPopup extends Popup {
 
         const result = this.buttonGroup.handleInput(data);
         if (result.confirmed) {
-            this.close();
-            return { action: 'close', confirm: true };
+            return this.closeWithConfirm();
         }
         if (result.consumed) {
             return { action: 'consumed' };
@@ -53,10 +53,52 @@ export class ConfirmPopup extends Popup {
         return { action: 'consumed' };
     }
 
-    invokeConfirm(): unknown {
+    protected override onMouseDown(fbRow: number, fbCol: number): PopupInputResult | null {
+        if (!this.buttonGroup) return null;
+        const idx = this.hitTestButton(fbRow, fbCol);
+        if (idx >= 0) {
+            this.buttonGroup.selectedIndex = idx;
+            this.mouseDownButton = idx;
+            return { action: 'consumed' };
+        }
+        return null;
+    }
+
+    protected override hitTestButton(fbRow: number, fbCol: number): number {
+        if (!this.config || !this.buttonGroup) return -1;
+        const boxWidth = this.computeBoxWidth();
+        const innerWidth = boxWidth - 2;
+        const btnRow = this.padV + 1 + this.config.bodyLines.length + 1;
+        if (fbRow === btnRow) {
+            const localCol = fbCol - this.padH - 1;
+            if (localCol >= 0) {
+                return this.buttonGroup.hitTestCol(localCol, innerWidth);
+            }
+        }
+        return -1;
+    }
+
+    protected override onButtonConfirm(buttonIndex: number): PopupInputResult {
+        if (this.buttonGroup) this.buttonGroup.selectedIndex = buttonIndex;
+        return this.closeWithConfirm();
+    }
+
+    override emitConfirm(): unknown {
         if (this.config && this.buttonGroup) {
             return this.config.onConfirm(this.buttonGroup.selectedIndex);
         }
+    }
+
+    private computeBoxWidth(): number {
+        if (!this.config || !this.buttonGroup) return 0;
+        const titleWithSpaces = ' ' + this.config.title + ' ';
+        const minTitleWidth = titleWithSpaces.length + 4;
+        let contentWidth = Math.max(minTitleWidth, this.buttonGroup.totalWidth);
+        for (const line of this.config.bodyLines) {
+            const w = ConfirmPopup.displayLen(line);
+            if (w > contentWidth) contentWidth = w;
+        }
+        return contentWidth + 4;
     }
 
     override renderToBuffer(theme: Theme): FrameBuffer {
@@ -64,7 +106,8 @@ export class ConfirmPopup extends Popup {
 
         const { title, bodyLines } = this.config;
         const t = theme;
-        const bodyStyle = t.confirmBody.idle;
+        const isWarning = this.config.warning !== false;
+        const bodyStyle = isWarning ? t.confirmBody.idle : t.dialogBody.idle;
 
         const titleWithSpaces = ' ' + title + ' ';
         const minTitleWidth = titleWithSpaces.length + 4;
@@ -106,8 +149,11 @@ export class ConfirmPopup extends Popup {
             MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
 
         const btnRow = sepRow + 1;
+        const btnBody = isWarning ? t.confirmBody.idle : t.dialogBody.idle;
+        const btnIdle = isWarning ? t.confirmButton.idle : t.dialogButton.idle;
+        const btnSel = isWarning ? t.confirmButton.selected : t.dialogButton.selected;
         fb.blit(btnRow, this.padH + 1, this.buttonGroup.renderToBuffer(
-            innerWidth, t.confirmBody.idle, t.confirmButton.idle, t.confirmButton.selected, true));
+            innerWidth, btnBody, btnIdle, btnSel, true));
 
         return fb;
     }
@@ -115,9 +161,10 @@ export class ConfirmPopup extends Popup {
     render(rows: number, cols: number, theme: Theme): string {
         if (!this.active || !this.config || !this.buttonGroup) return '';
         const fb = this.renderToBuffer(theme);
-        const screenRow = Math.floor((rows - fb.height) / 2) + 1;
-        const screenCol = Math.floor((cols - fb.width) / 2) + 1;
-        return fb.toAnsi(screenRow, screenCol);
+        const baseRow = Math.floor((rows - fb.height) / 2) + 1;
+        const baseCol = Math.floor((cols - fb.width) / 2) + 1;
+        this.setScreenPosition(baseRow, baseCol, fb.width, fb.height);
+        return fb.toAnsi(this.screenRow, this.screenCol);
     }
 
     private static displayLen(text: string): number {

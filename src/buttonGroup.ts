@@ -41,6 +41,20 @@ export class ButtonGroup {
         return w;
     }
 
+    hitTestCol(col: number, width: number): number {
+        const buttonsW = this.totalWidth;
+        const padTotal = width - buttonsW;
+        const padLeft = Math.max(0, Math.floor(padTotal / 2));
+        let x = padLeft;
+        for (let i = 0; i < this.labels.length; i++) {
+            if (i > 0) x += 1;
+            const btnWidth = this.labels[i].length + 4;
+            if (col >= x && col < x + btnWidth) return i;
+            x += btnWidth;
+        }
+        return -1;
+    }
+
     renderToBuffer(width: number, bodyStyle: TextStyle, buttonStyle: TextStyle, selectedButtonStyle: TextStyle, focused: boolean = true): FrameBuffer {
         const fb = new FrameBuffer(width, 1);
         const buttonsW = this.totalWidth;

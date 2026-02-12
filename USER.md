@@ -61,18 +61,40 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `Enter` | Open selected directory / open file in editor / execute command if text is entered |
 | `F3` | View -- highlight file in VS Code Explorer; open in system file manager if outside workspace |
 | `F4` | Open selected file in VS Code editor |
+| `F5` | Copy selected file(s) to the other pane |
+| `F6` | Move or rename selected file(s) |
 | `F7` | Open Make Folder dialog |
 | `F8` | Delete selected file or folder (moves to Recycle Bin / Trash on Windows and macOS; permanently deletes on Linux and FreeBSD) |
 | `Shift+F8` | Permanently delete selected file or folder (bypasses Recycle Bin / Trash on all platforms) |
+| `F9` | Open top menu bar (Left / Files / Commands / Options / Right) |
 | `F10` | Quit VSCommander (with confirmation) |
 | `Ctrl+H` | Toggle dotfile (hidden file) visibility |
 | `Ctrl+P` | Toggle visibility of inactive pane (shows terminal beneath) |
+| `Ctrl+R` | Re-read the active pane's directory |
+| `Ctrl+U` | Swap left and right pane directories |
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Set active pane to 1, 2, or 3 columns |
 | `Ctrl+Left` / `Ctrl+Right` | Move the border between left and right panes |
 | Printable keys | Type into the command line at the bottom |
 | `Backspace` | Delete character from command line |
 | `Alt+F1` | Open Change Drive popup for the left pane |
 | `Alt+F2` | Open Change Drive popup for the right pane |
+| `Insert` | Toggle selection on current file and move cursor down |
 | `Alt+<letter>` | Open quick search popup and jump to first matching entry |
+
+## File Selection
+
+Press `Insert` to toggle selection on the current file and move the cursor down. Selected files are shown in **bright yellow** text. The `..` entry cannot be selected.
+
+| Key | Action |
+|-----|--------|
+| `Insert` | Toggle selection on current file and move cursor down |
+| `Numpad *` | Invert selection (toggle all files) |
+| `Numpad +` | Select all files |
+| `Numpad -` | Deselect all files |
+
+- Selection is per-pane and cleared when changing directories
+- When files are selected, the bottom border shows the total size and count of selected files instead of the usual directory statistics
+- Selected files are used by Copy (F5) and Move (F6) operations: when files are selected, the operation applies to all selected files instead of just the cursor file
 
 ## Quick Search
 
@@ -110,6 +132,24 @@ Navigation and selection:
 | `0` | Quick-select the VSCode Explorer entry |
 | `a`-`z` | Quick-select additional entries by letter prefix; on Windows, also matches drive letter |
 
+## Copy (F5)
+
+Press `F5` to copy the selected file or files to the opposite pane's directory. If files are selected (via `Insert`), all selected files are copied; otherwise the file under the cursor is copied.
+
+The Copy dialog shows:
+
+- **Target path**: Pre-filled with the other pane's directory. Edit to copy elsewhere.
+- **If file exists**: Dropdown with `Ask`, `Overwrite`, or `Skip`. When set to `Ask`, a confirmation dialog appears for each conflicting file.
+- **Copy** / **Cancel** buttons
+
+Directories are copied recursively. A progress notification shows in VS Code during the operation.
+
+## Move / Rename (F6)
+
+Press `F6` to move or rename the selected file(s). Works the same as Copy but moves files instead. When the source and destination are on the same filesystem, the operation is instant (rename). For cross-filesystem moves, files are copied then deleted.
+
+If the target path is the same directory with a different name, this acts as a rename.
+
 ## Make Folder (F7)
 
 Press `F7` to open the Make Folder dialog. The dialog appears centered on the screen with the following fields:
@@ -132,6 +172,82 @@ Navigation within the dialog:
 
 After confirming, the folder is created and the cursor moves to the newly created entry. Both panes are refreshed to reflect the change.
 
+## Top Menu Bar (F9)
+
+Press `F9` to open the top menu bar. The menu bar replaces the top border row and displays five menus: **Left**, **Files**, **Commands**, **Options**, **Right**.
+
+### Menu Bar Navigation
+
+| Key | Action |
+|-----|--------|
+| `Left` / `Right` | Move between menu items |
+| `Enter` / `Down` | Open the dropdown for the selected menu |
+| `Escape` | Close the menu bar (or close the dropdown and return to the bar) |
+| `Home` / `End` | Jump to first / last menu item |
+| Hotkey letter | Open the menu whose highlighted letter matches (e.g. `L` for Left) |
+
+### Dropdown Navigation
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Move between dropdown items |
+| `Left` / `Right` | Switch to adjacent menu (keeps dropdown open) |
+| `Enter` | Activate the selected item |
+| `Escape` | Close the dropdown (returns to menu bar) |
+| `Home` / `End` | Jump to first / last item |
+| Hotkey letter | Activate the item whose highlighted letter matches |
+
+### Left / Right Menus
+
+These menus control the corresponding pane's display and sorting:
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| Brief | Ctrl+1 | 1-column file list |
+| Medium | Ctrl+2 | 2-column file list (default) |
+| Full | Ctrl+3 | 3-column file list |
+| Sort by name | | Sort entries alphabetically by name |
+| Sort by extension | | Sort entries by file extension, then name |
+| Sort by size | | Sort entries by file size |
+| Sort by date | | Sort entries by modification date (newest first) |
+| Unsorted | | Display entries in filesystem order |
+| Show dotfiles | Ctrl+H | Toggle visibility of hidden files |
+| Re-read | Ctrl+R | Refresh the directory listing |
+| Change drive | Alt+F1/F2 | Open the Change Drive popup |
+
+Active options show a checkmark. Column count and sort mode are per-pane.
+
+### Files Menu
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| View | F3 | Highlight file in VS Code Explorer |
+| Edit | F4 | Open file in VS Code editor |
+| Copy | F5 | Copy file (not yet implemented) |
+| Rename or move | F6 | Rename or move file (not yet implemented) |
+| Make folder | F7 | Open the Make Folder dialog |
+| Delete | F8 | Delete selected file or folder |
+
+### Commands Menu
+
+| Item | Shortcut | Description |
+|------|----------|-------------|
+| Swap panels | Ctrl+U | Swap left and right pane directories |
+| Panels On/Off | Ctrl+O | Toggle the panel overlay |
+
+### Options Menu
+
+| Item | Description |
+|------|-------------|
+| Panel settings | Open VS Code settings filtered to VSCommander |
+
+### Mouse in the Menu
+
+- Click a menu bar item to select or toggle its dropdown
+- Click a dropdown item to activate it
+- Click outside the menu to close it
+- Scroll wheel moves through dropdown items
+
 ## Multi-Column Display
 
 Each pane can display 1, 2, or 3 columns of files. The default is 2 columns. Files fill columns top-to-bottom, then left-to-right (newspaper style).
@@ -148,11 +264,11 @@ The bottom row shows function key labels styled after Far Manager. Labels update
 | F2 | Menu | Label only (future) |
 | F3 | View | Highlights file in VS Code Explorer; opens in system file manager if outside workspace |
 | F4 | Edit | Opens selected file in VS Code editor |
-| F5 | Copy | Label only (future) |
-| F6 | Move | Label only (future) |
+| F5 | Copy | Copies selected file(s) to the opposite pane with a target path dialog |
+| F6 | Move | Moves or renames selected file(s) with a target path dialog |
 | F7 | Mkdir | Opens the Make Folder dialog to create directories or symbolic links |
 | F8 | Del | Moves to Recycle Bin / Trash (Windows, macOS) or permanently deletes (Linux, FreeBSD) with confirmation |
-| F9 | Conf | Label only (future) |
+| F9 | Conf | Opens the top menu bar with Left, Files, Commands, Options, Right menus |
 | F10 | Quit | Quits VSCommander (with confirmation) |
 
 ## Info Bar
@@ -208,10 +324,13 @@ Every panel action can be remapped to a different key. Valid key names include `
 |---------|------|---------|--------|
 | `vscommander.keyView` | string | `F3` | View (reveal file in Explorer) |
 | `vscommander.keyEdit` | string | `F4` | Edit (open file in editor) |
+| `vscommander.keyCopy` | string | `F5` | Copy (copy files) |
+| `vscommander.keyMove` | string | `F6` | Move/Rename (move or rename files) |
 | `vscommander.keyMkdir` | string | `F7` | Mkdir (create directory) |
 | `vscommander.keyDelete` | string | `F8` | Delete (move to Trash) |
 | `vscommander.keyForceDelete` | string | `Shift+F8` | Permanent delete (bypass Trash) |
 | `vscommander.keyQuit` | string | `F10` | Quit VSCommander |
+| `vscommander.keyMenu` | string | `F9` | Open top menu bar |
 | `vscommander.keyDriveLeft` | string | `Alt+F1` | Change Drive popup (left pane) |
 | `vscommander.keyDriveRight` | string | `Alt+F2` | Change Drive popup (right pane) |
 | `vscommander.keyToggleDotfiles` | string | `Ctrl+H` | Toggle dotfile visibility |

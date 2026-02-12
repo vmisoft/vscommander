@@ -21,7 +21,11 @@ The project is a work in progress and not published to the marketplace yet.
 - **Drive / mount popup**: `Alt+F1` / `Alt+F2` to switch drives (Windows) or mounted filesystems (Linux, macOS, FreeBSD)
 - **Half-panel mode**: `Ctrl+P` hides one pane to show recent terminal output alongside your files
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
-- **Function key bar**: F3 View, F4 Edit, F7 Mkdir, F8 Delete, F10 Quit, and more
+- **Top menu bar**: F9 opens a Far Manager-style menu with Left, Files, Commands, Options, Right menus for sorting, column layout, and all panel operations
+- **Sorting**: Sort each pane independently by name, extension, size, date, or unsorted
+- **File operations**: F5 Copy, F6 Move/Rename with overwrite handling and progress display
+- **File selection**: Insert to toggle selection, batch operations on selected files
+- **Function key bar**: F3 View, F4 Edit, F5 Copy, F6 Move, F7 Mkdir, F8 Delete, F9 Config, F10 Quit
 - **Mouse support**: click to select files, switch panes, activate popup buttons, scroll with the wheel
 - **Configurable key bindings**: remap any panel action to a different key via settings
 - **Cross-platform**: Linux, FreeBSD, macOS, and Windows
@@ -67,8 +71,11 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `Ctrl+Left` / `Ctrl+Right` | Resize panes |
 | `F3` | View -- highlight file in VS Code Explorer |
 | `F4` | Edit -- open file in VS Code editor |
+| `F5` | Copy files to other pane |
+| `F6` | Move / rename files |
 | `F7` | Make folder -- create directories or symbolic links |
 | `F8` | Delete selected file or folder |
+| `F9` | Open top menu bar (Left / Files / Commands / Options / Right) |
 | `F10` | Close panel and return to shell |
 | `Alt+Enter` | Detach to fullscreen / reattach |
 
@@ -83,8 +90,11 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `vscommander.panelColumns` | `2` | File columns per pane (1, 2, or 3) |
 | `vscommander.keyView` | `F3` | Key binding for View |
 | `vscommander.keyEdit` | `F4` | Key binding for Edit |
+| `vscommander.keyCopy` | `F5` | Key binding for Copy |
+| `vscommander.keyMove` | `F6` | Key binding for Move/Rename |
 | `vscommander.keyMkdir` | `F7` | Key binding for Mkdir |
 | `vscommander.keyDelete` | `F8` | Key binding for Delete |
+| `vscommander.keyMenu` | `F9` | Key binding for Menu |
 | `vscommander.keyQuit` | `F10` | Key binding for Quit |
 | `vscommander.key*` | -- | All panel actions are remappable (see USER.md) |
 

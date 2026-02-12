@@ -4,7 +4,7 @@ import {
     resetStyle, moveTo, DBOX, MBOX, BOX, bgRgb
 } from './draw';
 import { PanelSettings, Theme } from './settings';
-import { DirEntry, PaneGeometry, Layout, PaneRenderContext } from './types';
+import { DirEntry, PaneGeometry, Layout, PaneRenderContext, SortMode } from './types';
 import {
     applyStyle, entryRenderStyle, truncatePath, formatClock,
     centerText, formatSizeComma, formatDate, computeStats,
@@ -15,31 +15,94 @@ export class Pane {
     entries: DirEntry[];
     cursor = 0;
     scroll = 0;
+    sortMode: SortMode = 'name';
+    colCount: number;
+    selected: Set<string> = new Set();
 
     constructor(cwd: string, settings: PanelSettings) {
         this.cwd = cwd;
-        this.entries = Pane.readDir(cwd, settings);
+        this.colCount = settings.panelColumns;
+        this.entries = Pane.readDir(cwd, settings, this.sortMode);
+    }
+
+    toggleSelection(idx: number): void {
+        const entry = this.entries[idx];
+        if (!entry || entry.name === '..') return;
+        if (this.selected.has(entry.name)) {
+            this.selected.delete(entry.name);
+        } else {
+            this.selected.add(entry.name);
+        }
+    }
+
+    clearSelection(): void {
+        this.selected.clear();
+    }
+
+    invertSelection(): void {
+        for (const entry of this.entries) {
+            if (entry.name === '..') continue;
+            if (this.selected.has(entry.name)) {
+                this.selected.delete(entry.name);
+            } else {
+                this.selected.add(entry.name);
+            }
+        }
+    }
+
+    selectByPattern(pattern: string, select: boolean): void {
+        const regex = this.patternToRegex(pattern);
+        for (const entry of this.entries) {
+            if (entry.name === '..' || entry.isDir) continue;
+            if (regex.test(entry.name)) {
+                if (select) {
+                    this.selected.add(entry.name);
+                } else {
+                    this.selected.delete(entry.name);
+                }
+            }
+        }
+    }
+
+    private patternToRegex(pattern: string): RegExp {
+        const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+        const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
+        return new RegExp('^' + withWildcards + '$', 'i');
+    }
+
+    get selectionStats(): { count: number; bytes: number } {
+        let count = 0;
+        let bytes = 0;
+        for (const entry of this.entries) {
+            if (this.selected.has(entry.name)) {
+                count++;
+                if (!entry.isDir) bytes += entry.size;
+            }
+        }
+        return { count, bytes };
     }
 
     refresh(settings: PanelSettings): void {
-        this.entries = Pane.readDir(this.cwd, settings);
+        this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
         this.cursor = Math.min(this.cursor, Math.max(0, this.entries.length - 1));
     }
 
     navigateInto(entry: DirEntry, settings: PanelSettings): void {
         this.cwd = path.join(this.cwd, entry.name);
-        this.entries = Pane.readDir(this.cwd, settings);
+        this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
         this.cursor = 0;
         this.scroll = 0;
+        this.selected.clear();
     }
 
     navigateUp(settings: PanelSettings, pageCapacity: number): void {
         const oldDirName = path.basename(this.cwd);
         this.cwd = path.dirname(this.cwd);
-        this.entries = Pane.readDir(this.cwd, settings);
+        this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
         const idx = this.entries.findIndex(e => e.name === oldDirName);
         this.cursor = idx >= 0 ? idx : 0;
         this.ensureCursorVisible(pageCapacity);
+        this.selected.clear();
     }
 
     ensureCursorVisible(pageCapacity: number): void {
@@ -62,7 +125,7 @@ export class Pane {
         return out.join('');
     }
 
-    static readDir(dirPath: string, settings: PanelSettings): DirEntry[] {
+    static readDir(dirPath: string, settings: PanelSettings, sortMode: SortMode = 'name'): DirEntry[] {
         try {
             const items = fs.readdirSync(dirPath, { withFileTypes: true });
             const entries: DirEntry[] = [];
@@ -89,20 +152,7 @@ export class Pane {
                     mtime,
                 });
             }
-            if (settings.sortDirsFirst) {
-                entries.sort((a, b) => {
-                    if (a.name === '..') return -1;
-                    if (b.name === '..') return 1;
-                    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-                    return a.name.localeCompare(b.name);
-                });
-            } else {
-                entries.sort((a, b) => {
-                    if (a.name === '..') return -1;
-                    if (b.name === '..') return 1;
-                    return a.name.localeCompare(b.name);
-                });
-            }
+            Pane.sortEntries(entries, sortMode, settings.sortDirsFirst);
             return entries;
         } catch {
             const fallback: DirEntry[] = [];
@@ -111,6 +161,36 @@ export class Pane {
             }
             return fallback;
         }
+    }
+
+    private static getExtension(name: string): string {
+        const dot = name.lastIndexOf('.');
+        return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+    }
+
+    private static sortEntries(entries: DirEntry[], sortMode: SortMode, dirsFirst: boolean): void {
+        entries.sort((a, b) => {
+            if (a.name === '..') return -1;
+            if (b.name === '..') return 1;
+            if (dirsFirst && a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+            switch (sortMode) {
+                case 'extension': {
+                    const extA = Pane.getExtension(a.name);
+                    const extB = Pane.getExtension(b.name);
+                    const cmp = extA.localeCompare(extB);
+                    return cmp !== 0 ? cmp : a.name.localeCompare(b.name);
+                }
+                case 'size':
+                    return a.size !== b.size ? a.size - b.size : a.name.localeCompare(b.name);
+                case 'date':
+                    return b.mtime.getTime() - a.mtime.getTime() || a.name.localeCompare(b.name);
+                case 'unsorted':
+                    return 0;
+                case 'name':
+                default:
+                    return a.name.localeCompare(b.name);
+            }
+        });
     }
 
     private renderTopBorder(ctx: PaneRenderContext): string {
@@ -166,7 +246,7 @@ export class Pane {
     }
 
     private renderFileList(ctx: PaneRenderContext): string {
-        const { geo, layout, theme: t, isActive } = ctx;
+        const { geo, layout, theme: t, isActive, selected } = ctx;
         const out: string[] = [];
         const { listStart, listHeight } = layout;
         const emptyBg = bgRgb(t.border.idle.bg);
@@ -181,7 +261,8 @@ export class Pane {
                 if (idx < this.entries.length) {
                     const entry = this.entries[idx];
                     const isCursor = isActive && idx === this.cursor;
-                    const rs = entryRenderStyle(entry, t);
+                    const isSel = selected !== undefined && selected.has(entry.name);
+                    const rs = entryRenderStyle(entry, t, isSel);
                     out.push(applyStyle(isCursor ? rs.selected : rs.idle));
 
                     const displayName = entry.name.slice(0, colWidth);
@@ -262,12 +343,18 @@ export class Pane {
     }
 
     private renderBottomBorder(ctx: PaneRenderContext): string {
-        const { geo, layout, theme: t } = ctx;
+        const { geo, layout, theme: t, selected } = ctx;
         const border = applyStyle(t.border.idle);
         const stats = computeStats(this.entries);
-        const statsText = ' Bytes: ' + formatSizeComma(stats.totalBytes)
-            + ', files: ' + stats.fileCount
-            + ', folders: ' + stats.dirCount + ' ';
+        const sel = this.selectionStats;
+        let statsText: string;
+        if (sel.count > 0) {
+            statsText = ' ' + formatSizeComma(sel.bytes) + ' in ' + sel.count + ' file' + (sel.count > 1 ? 's' : '') + ' ';
+        } else {
+            statsText = ' Bytes: ' + formatSizeComma(stats.totalBytes)
+                + ', files: ' + stats.fileCount
+                + ', folders: ' + stats.dirCount + ' ';
+        }
 
         const innerWidth = geo.width - 2;
         const fill = innerWidth - statsText.length;

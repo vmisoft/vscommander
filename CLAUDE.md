@@ -4,6 +4,15 @@
 
 Dual-panel file manager VS Code extension overlaid on a real terminal via pseudoterminal + node-pty.
 
+It is designed to be as close replica as possible to the Far Manager. The Far Manager source code is located inside the "FarManager" directory.
+
+**IMPORTANT** when implementing a new feature - carefully read the corresponding far manager code to get a complete understanding of:
+- the feature logic
+- edge cases and oddities
+- visual representation
+- hotkeys, key bindings, and mouse interactions
+and replicate the feature EXACTLY.
+
 ## Build & Run
 
 ```bash

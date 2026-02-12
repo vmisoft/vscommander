@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { spawnShell, ShellProxy } from './shell';
 import { Panel } from './panel';
 import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings } from './settings';
+import { CopyMoveResult, OverwriteMode } from './copyMovePopup';
 
 function readSettings(): PanelSettings {
     const cfg = vscode.workspace.getConfiguration('vscommander');
@@ -18,10 +19,13 @@ function readSettings(): PanelSettings {
         keys: {
             view: cfg.get<string>('keyView', DEFAULT_KEY_BINDINGS.view),
             edit: cfg.get<string>('keyEdit', DEFAULT_KEY_BINDINGS.edit),
+            copy: cfg.get<string>('keyCopy', DEFAULT_KEY_BINDINGS.copy),
+            move: cfg.get<string>('keyMove', DEFAULT_KEY_BINDINGS.move),
             mkdir: cfg.get<string>('keyMkdir', DEFAULT_KEY_BINDINGS.mkdir),
             delete: cfg.get<string>('keyDelete', DEFAULT_KEY_BINDINGS.delete),
             forceDelete: cfg.get<string>('keyForceDelete', DEFAULT_KEY_BINDINGS.forceDelete),
             quit: cfg.get<string>('keyQuit', DEFAULT_KEY_BINDINGS.quit),
+            menu: cfg.get<string>('keyMenu', DEFAULT_KEY_BINDINGS.menu),
             driveLeft: cfg.get<string>('keyDriveLeft', DEFAULT_KEY_BINDINGS.driveLeft),
             driveRight: cfg.get<string>('keyDriveRight', DEFAULT_KEY_BINDINGS.driveRight),
             toggleDotfiles: cfg.get<string>('keyToggleDotfiles', DEFAULT_KEY_BINDINGS.toggleDotfiles),
@@ -50,6 +54,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private blinkTimer: ReturnType<typeof setInterval> | undefined;
     private cmdBlinkTimer: ReturnType<typeof setInterval> | undefined;
     private mkdirBlinkTimer: ReturnType<typeof setInterval> | undefined;
+    private copyMoveBlinkTimer: ReturnType<typeof setInterval> | undefined;
     private isDetached = false;
     private cdSuppressUntil = 0;
     private commandRunning = false;
@@ -167,6 +172,10 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 case 'settingsChanged':
                     this.writeEmitter.fire(this.panel.show());
                     break;
+                case 'openSettings':
+                    vscode.commands.executeCommand('workbench.action.openSettings', 'vscommander');
+                    this.writeEmitter.fire(this.panel.redraw());
+                    break;
                 case 'toggleDetach':
                     this.toggleDetach();
                     break;
@@ -183,6 +192,9 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 case 'mkdir':
                     this.makeDirectory(result.cwd, result.folderName, result.linkType, result.linkTarget, result.multipleNames);
                     break;
+                case 'copyMove':
+                    this.executeCopyMove(result.result);
+                    break;
                 case 'none':
                     break;
             }
@@ -193,6 +205,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 this.syncBlinkTimer();
             }
             this.syncMkdirBlinkTimer();
+            this.syncCopyMoveBlinkTimer();
             this.resetCmdBlink();
         } else {
             this.shell?.write(data);
@@ -326,6 +339,31 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         if (this.mkdirBlinkTimer) {
             clearInterval(this.mkdirBlinkTimer);
             this.mkdirBlinkTimer = undefined;
+        }
+    }
+
+    private syncCopyMoveBlinkTimer(): void {
+        if (this.panel?.isCopyMoveBlinkActive && !this.copyMoveBlinkTimer) {
+            this.panel.resetCopyMoveBlink();
+            this.copyMoveBlinkTimer = setInterval(() => {
+                if (this.panel?.isCopyMoveBlinkActive) {
+                    const update = this.panel.renderCopyMoveCursorBlink();
+                    if (update) {
+                        this.writeEmitter.fire(update);
+                    }
+                } else {
+                    this.stopCopyMoveBlinkTimer();
+                }
+            }, 500);
+        } else if (!this.panel?.isCopyMoveBlinkActive && this.copyMoveBlinkTimer) {
+            this.stopCopyMoveBlinkTimer();
+        }
+    }
+
+    private stopCopyMoveBlinkTimer(): void {
+        if (this.copyMoveBlinkTimer) {
+            clearInterval(this.copyMoveBlinkTimer);
+            this.copyMoveBlinkTimer = undefined;
         }
     }
 
@@ -548,6 +586,106 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 pane.cursor = idx;
             }
             this.writeEmitter.fire(this.panel.redraw());
+        }
+    }
+
+    private executeCopyMove(result: CopyMoveResult): void {
+        const { mode, targetPath, overwrite, sourceFiles, sourceCwd } = result;
+        const targetDir = path.isAbsolute(targetPath)
+            ? targetPath
+            : path.resolve(sourceCwd, targetPath);
+
+        const isMove = mode === 'move';
+        const label = isMove ? 'Moving' : 'Copying';
+
+        vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: label + ' files...', cancellable: true },
+            async (progress, token) => {
+                const total = sourceFiles.length;
+                let completed = 0;
+                for (const fileName of sourceFiles) {
+                    if (token.isCancellationRequested) break;
+                    const src = path.join(sourceCwd, fileName);
+                    const dst = sourceFiles.length === 1 && !targetPath.endsWith(path.sep)
+                        ? targetDir
+                        : path.join(targetDir, fileName);
+                    progress.report({ message: fileName, increment: 100 / total });
+                    try {
+                        await this.copyMoveOne(src, dst, isMove, overwrite);
+                    } catch {
+                        // skip individual file errors
+                    }
+                    completed++;
+                }
+                if (this.panel) {
+                    this.panel.activePaneObj.clearSelection();
+                }
+                this.refreshPanels();
+            }
+        );
+    }
+
+    private async copyMoveOne(src: string, dst: string, isMove: boolean, overwrite: OverwriteMode): Promise<void> {
+        const srcStat = await fs.promises.stat(src);
+        let dstPath = dst;
+
+        try {
+            const dstStat = await fs.promises.stat(dst);
+            if (dstStat.isDirectory()) {
+                dstPath = path.join(dst, path.basename(src));
+            }
+        } catch {
+            // dst doesn't exist — use as-is
+        }
+
+        const exists = await fs.promises.access(dstPath).then(() => true, () => false);
+        if (exists) {
+            if (overwrite === 'skip') return;
+            if (overwrite === 'ask') {
+                const action = await vscode.window.showWarningMessage(
+                    '"' + path.basename(dstPath) + '" already exists. Overwrite?',
+                    { modal: true },
+                    'Overwrite', 'Skip'
+                );
+                if (action !== 'Overwrite') return;
+            }
+        }
+
+        if (isMove) {
+            try {
+                await fs.promises.rename(src, dstPath);
+                return;
+            } catch {
+                // cross-device — fall through to copy+delete
+            }
+        }
+
+        if (srcStat.isDirectory()) {
+            await this.copyDirRecursive(src, dstPath);
+            if (isMove) {
+                await fs.promises.rm(src, { recursive: true, force: true });
+            }
+        } else {
+            const dstDir = path.dirname(dstPath);
+            await fs.promises.mkdir(dstDir, { recursive: true });
+            await fs.promises.copyFile(src, dstPath);
+            if (isMove) {
+                await fs.promises.unlink(src);
+            }
+        }
+    }
+
+    private async copyDirRecursive(src: string, dst: string): Promise<void> {
+        await fs.promises.mkdir(dst, { recursive: true });
+        const entries = await fs.promises.readdir(src, { withFileTypes: true });
+        for (const entry of entries) {
+            const srcPath = path.join(src, entry.name);
+            const dstPath = path.join(dst, entry.name);
+            if (entry.isDirectory()) {
+                await this.copyDirRecursive(srcPath, dstPath);
+            } else {
+                await fs.promises.copyFile(srcPath, dstPath);
+            }
         }
     }
 

@@ -71,6 +71,48 @@
         "args": { "text": "\u001b[19~" },
         "key": "f8",
         "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001b[24;5~" },
+        "key": "ctrl+f12",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001bOj" },
+        "key": "numpad_multiply",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001bOk" },
+        "key": "numpad_add",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001bOm" },
+        "key": "numpad_subtract",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001b[49;5u" },
+        "key": "ctrl+1",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001b[50;5u" },
+        "key": "ctrl+2",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001b[51;5u" },
+        "key": "ctrl+3",
+        "when": "terminalFocus && vscommander.panelVisible"
       }
     ],
     "viewsContainers": {
@@ -121,6 +163,16 @@
           "default": "F4",
           "description": "Key binding for Edit (open file in editor)"
         },
+        "vscommander.keyCopy": {
+          "type": "string",
+          "default": "F5",
+          "description": "Key binding for Copy (copy files)"
+        },
+        "vscommander.keyMove": {
+          "type": "string",
+          "default": "F6",
+          "description": "Key binding for Move/Rename (move or rename files)"
+        },
         "vscommander.keyMkdir": {
           "type": "string",
           "default": "F7",
@@ -140,6 +192,11 @@
           "type": "string",
           "default": "F10",
           "description": "Key binding for Quit (close panel)"
+        },
+        "vscommander.keyMenu": {
+          "type": "string",
+          "default": "F9",
+          "description": "Key binding for Menu (open top menu bar)"
         },
         "vscommander.keyDriveLeft": {
           "type": "string",

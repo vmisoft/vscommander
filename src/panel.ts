@@ -14,6 +14,8 @@ import { SearchPopup } from './searchPopup';
 import { DrivePopup } from './drivePopup';
 import { ConfirmPopup } from './confirmPopup';
 import { MkdirPopup } from './mkdirPopup';
+import { MenuPopup, MenuCommand } from './menuPopup';
+import { CopyMovePopup, CopyMoveMode, CopyMoveResult } from './copyMovePopup';
 import { TerminalBuffer } from './terminalBuffer';
 
 export type PanelInputResult =
@@ -23,11 +25,13 @@ export type PanelInputResult =
     | { action: 'input'; data: string; redraw: string }
     | { action: 'executeCommand'; data: string }
     | { action: 'settingsChanged' }
+    | { action: 'openSettings' }
     | { action: 'toggleDetach' }
     | { action: 'openFile'; filePath: string }
     | { action: 'viewFile'; filePath: string }
     | { action: 'deleteFile'; filePath: string; toTrash: boolean }
     | { action: 'mkdir'; cwd: string; folderName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean }
+    | { action: 'copyMove'; result: CopyMoveResult }
     | { action: 'none' };
 
 export class Panel {
@@ -43,6 +47,8 @@ export class Panel {
     drivePopup: DrivePopup;
     confirmPopup: ConfirmPopup;
     mkdirPopup: MkdirPopup;
+    menuPopup: MenuPopup;
+    copyMovePopup: CopyMovePopup;
     termBuffer: TerminalBuffer;
     inactivePaneHidden = false;
     cmdCursorVisible = true;
@@ -63,6 +69,8 @@ export class Panel {
         this.drivePopup = new DrivePopup();
         this.confirmPopup = new ConfirmPopup();
         this.mkdirPopup = new MkdirPopup();
+        this.menuPopup = new MenuPopup();
+        this.copyMovePopup = new CopyMovePopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
         this.syncPopupBounds();
     }
@@ -99,7 +107,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -112,18 +120,21 @@ export class Panel {
     }
 
     private getLayout(): Layout {
-        return computeLayout(this.rows, this.cols, this.settings.panelColumns, this.leftWidth);
+        return computeLayout(this.rows, this.cols, this.settings.panelColumns, this.leftWidth, this.left.colCount, this.right.colCount);
     }
 
     get hasActivePopup(): boolean {
         return this.searchPopup.active || this.drivePopup.active
-            || this.confirmPopup.active || this.mkdirPopup.active;
+            || this.confirmPopup.active || this.mkdirPopup.active
+            || this.menuPopup.active || this.copyMovePopup.active;
     }
 
     private get activePopupObj(): Popup | null {
         if (this.confirmPopup.active) return this.confirmPopup;
+        if (this.copyMovePopup.active) return this.copyMovePopup;
         if (this.mkdirPopup.active) return this.mkdirPopup;
         if (this.drivePopup.active) return this.drivePopup;
+        if (this.menuPopup.active) return this.menuPopup;
         if (this.searchPopup.active) return this.searchPopup;
         return null;
     }
@@ -160,6 +171,7 @@ export class Panel {
         return this.right.render({
             geo: layout.rightPane, layout, theme: t,
             isActive: !leftIsActive, showClock: true,
+            selected: this.right.selected,
         });
     }
 
@@ -174,6 +186,19 @@ export class Panel {
     renderMkdirCursorBlink(): string {
         if (!this.visible || !this.mkdirPopup.active) return '';
         return this.mkdirPopup.renderMkdirBlink(this.rows, this.cols, this.settings.theme);
+    }
+
+    get isCopyMoveBlinkActive(): boolean {
+        return this.copyMovePopup.active && this.copyMovePopup.hasBlink;
+    }
+
+    resetCopyMoveBlink(): void {
+        this.copyMovePopup.resetCopyMoveBlink();
+    }
+
+    renderCopyMoveCursorBlink(): string {
+        if (!this.visible || !this.copyMovePopup.active) return '';
+        return this.copyMovePopup.renderCopyMoveBlink(this.rows, this.cols, this.settings.theme);
     }
 
     renderSearchCursorBlink(): string {
@@ -216,8 +241,16 @@ export class Panel {
             return { action: 'none' };
         }
 
+        if (this.menuPopup.active) {
+            return this.resolveMenuResult(this.menuPopup.handleInput(data));
+        }
+
         if (this.confirmPopup.active) {
             return this.resolvePopupResult(this.confirmPopup.handleInput(data));
+        }
+
+        if (this.copyMovePopup.active) {
+            return this.resolveCopyMoveResult(this.copyMovePopup.handleInput(data));
         }
 
         if (this.mkdirPopup.active) {
@@ -280,6 +313,15 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
+        if (matchesKeyBinding(data, this.settings.keys.menu)) {
+            this.menuPopup.openMenu(
+                this.settings, this.activePane,
+                this.left.sortMode, this.right.sortMode,
+                this.left.colCount, this.right.colCount,
+            );
+            return { action: 'redraw', data: this.render() };
+        }
+
         if (matchesKeyBinding(data, this.settings.keys.view)) {
             const entry = pane.entries[pane.cursor];
             if (entry && entry.name !== '..') {
@@ -294,6 +336,14 @@ export class Panel {
                 return { action: 'openFile', filePath: path.join(pane.cwd, entry.name) };
             }
             return { action: 'none' };
+        }
+
+        if (matchesKeyBinding(data, this.settings.keys.copy)) {
+            return this.openCopyMovePopup('copy');
+        }
+
+        if (matchesKeyBinding(data, this.settings.keys.move)) {
+            return this.openCopyMovePopup('move');
         }
 
         if (matchesKeyBinding(data, this.settings.keys.mkdir)) {
@@ -339,6 +389,68 @@ export class Panel {
                 return { action: 'redraw', data: this.render() };
             }
             return { action: 'none' };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+R')) {
+            pane.refresh(this.settings);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+U')) {
+            return this.handleMenuCommand({ type: 'swapPanels' });
+        }
+
+        if (matchesKeyBinding(data, 'Insert')) {
+            pane.toggleSelection(pane.cursor);
+            if (pane.cursor < pane.entries.length - 1) {
+                pane.cursor++;
+                if (pane.cursor >= pane.scroll + pageCapacity) {
+                    pane.scroll = pane.cursor - pageCapacity + 1;
+                }
+            }
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+F12')) {
+            this.menuPopup.openMenu(
+                this.settings, this.activePane,
+                this.left.sortMode, this.right.sortMode,
+                this.left.colCount, this.right.colCount,
+            );
+            this.menuPopup.selectedMenu = this.activePane === 'left' ? 0 : 4;
+            this.menuPopup.dropdownOpen = true;
+            this.menuPopup.selectedItem = 4;
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Numpad*')) {
+            pane.invertSelection();
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Numpad+')) {
+            pane.selectByPattern('*', true);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Numpad-')) {
+            pane.selectByPattern('*', false);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+1')) {
+            pane.colCount = 1;
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+2')) {
+            pane.colCount = 2;
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+3')) {
+            pane.colCount = 3;
+            return { action: 'redraw', data: this.render() };
         }
 
         if (data === '\x1b[A') {
@@ -526,9 +638,15 @@ export class Panel {
     private handleMouse(mouse: MouseEvent, layout: Layout, activePaneGeo: PaneGeometry): PanelInputResult {
         const popup = this.activePopupObj;
 
+        const resolvePopup = (result: PopupInputResult): PanelInputResult => {
+            if (popup === this.menuPopup) return this.resolveMenuResult(result);
+            if (popup === this.copyMovePopup) return this.resolveCopyMoveResult(result);
+            return this.resolvePopupResult(result);
+        };
+
         if (mouse.isRelease) {
             if (popup && mouse.button === 0) {
-                return this.resolvePopupResult(popup.handleMouseUp(mouse.row, mouse.col));
+                return resolvePopup(popup.handleMouseUp(mouse.row, mouse.col));
             }
             return { action: 'none' };
         }
@@ -545,7 +663,7 @@ export class Panel {
                 return { action: 'redraw', data: this.render() };
             }
             if (mouse.button !== 0) return { action: 'none' };
-            return this.resolvePopupResult(popup.handleMouseDown(mouse.row, mouse.col));
+            return resolvePopup(popup.handleMouseDown(mouse.row, mouse.col));
         }
 
         const pane = this.activePaneObj;
@@ -594,6 +712,98 @@ export class Panel {
         return { action: 'redraw', data: this.render() };
     }
 
+    private resolveMenuResult(result: PopupInputResult): PanelInputResult {
+        if (result.action === 'close' && result.confirm && result.command) {
+            return this.handleMenuCommand(result.command as MenuCommand);
+        }
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private handleMenuCommand(cmd: MenuCommand): PanelInputResult {
+        switch (cmd.type) {
+            case 'columns': {
+                const targetPane = cmd.pane === 'left' ? this.left : this.right;
+                targetPane.colCount = cmd.columns;
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'sort': {
+                const pane = cmd.pane === 'left' ? this.left : this.right;
+                pane.sortMode = cmd.mode;
+                pane.refresh(this.settings);
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'reread': {
+                const pane = cmd.pane === 'left' ? this.left : this.right;
+                pane.refresh(this.settings);
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'changeDrive': {
+                this.openDrivePopup(cmd.pane);
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'toggleDotfiles': {
+                this.settings.showDotfiles = !this.settings.showDotfiles;
+                this.left.refresh(this.settings);
+                this.right.refresh(this.settings);
+                return { action: 'settingsChanged' };
+            }
+            case 'view': {
+                const pane = this.activePaneObj;
+                const entry = pane.entries[pane.cursor];
+                if (entry && entry.name !== '..') {
+                    return { action: 'viewFile', filePath: path.join(pane.cwd, entry.name) };
+                }
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'edit': {
+                const pane = this.activePaneObj;
+                const entry = pane.entries[pane.cursor];
+                if (entry && !entry.isDir) {
+                    return { action: 'openFile', filePath: path.join(pane.cwd, entry.name) };
+                }
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'copy': {
+                return this.openCopyMovePopup('copy');
+            }
+            case 'move': {
+                return this.openCopyMovePopup('move');
+            }
+            case 'mkdir': {
+                this.openMkdirPopup('');
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'delete': {
+                const pane = this.activePaneObj;
+                const platform = os.platform();
+                const hasTrash = platform === 'win32' || platform === 'darwin';
+                return this.openDeletePopup(pane, hasTrash);
+            }
+            case 'swapPanels': {
+                const tmpCwd = this.left.cwd;
+                this.left.cwd = this.right.cwd;
+                this.right.cwd = tmpCwd;
+                const tmpSort = this.left.sortMode;
+                this.left.sortMode = this.right.sortMode;
+                this.right.sortMode = tmpSort;
+                const tmpCols = this.left.colCount;
+                this.left.colCount = this.right.colCount;
+                this.right.colCount = tmpCols;
+                this.left.refresh(this.settings);
+                this.right.refresh(this.settings);
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'panelsOnOff': {
+                return { action: 'close' };
+            }
+            case 'openSettings': {
+                return { action: 'openSettings' };
+            }
+            default:
+                return { action: 'redraw', data: this.render() };
+        }
+    }
+
     private openDrivePopup(target: 'left' | 'right'): void {
         this.drivePopup.open(target, this.settings);
         this.drivePopup.setConfirmAction(() => {
@@ -630,6 +840,41 @@ export class Panel {
                 multipleNames: r.multipleNames,
             };
         });
+    }
+
+    private openCopyMovePopup(mode: CopyMoveMode): PanelInputResult {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        if (!entry || (entry.name === '..' && pane.selected.size === 0)) {
+            return { action: 'none' };
+        }
+
+        const sourceFiles: string[] = [];
+        if (pane.selected.size > 0) {
+            for (const e of pane.entries) {
+                if (pane.selected.has(e.name)) sourceFiles.push(e.name);
+            }
+        } else {
+            sourceFiles.push(entry.name);
+        }
+
+        const otherPane = this.activePane === 'left' ? this.right : this.left;
+        const targetDir = otherPane.cwd;
+
+        this.copyMovePopup.openWith(mode, targetDir, sourceFiles, pane.cwd, this.cols);
+        this.copyMovePopup.setConfirmAction(() => {
+            const r = this.copyMovePopup.result;
+            return { action: 'copyMove', result: r };
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private resolveCopyMoveResult(result: PopupInputResult): PanelInputResult {
+        if (result.action === 'close' && result.confirm && result.command) {
+            const cmd = result.command as PanelInputResult;
+            return cmd;
+        }
+        return { action: 'redraw', data: this.render() };
     }
 
     private handleScrollWheel(button: number, pane: Pane, listHeight: number, pageCapacity: number): void {
@@ -746,6 +991,7 @@ export class Panel {
             out.push(this.left.render({
                 geo: layout.leftPane, layout, theme: t,
                 isActive: leftIsActive, showClock: false,
+                selected: this.left.selected,
             }));
         }
 
@@ -755,6 +1001,7 @@ export class Panel {
             out.push(this.right.render({
                 geo: layout.rightPane, layout, theme: t,
                 isActive: !leftIsActive, showClock: this.settings.clockEnabled,
+                selected: this.right.selected,
             }));
         }
 
@@ -763,10 +1010,15 @@ export class Panel {
 
         const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
 
-        if (this.searchPopup.active) {
+        if (this.menuPopup.active) {
+            out.push(this.menuPopup.render(layout.topRow, 1, t, this.cols));
+        } else if (this.searchPopup.active) {
             const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.searchPopup.render(layout.bottomRow, activePaneGeo.startCol, t));
             out.push(this.searchPopup.renderShadow(cellAt));
+        } else if (this.copyMovePopup.active) {
+            out.push(this.copyMovePopup.render(this.rows, this.cols, t));
+            out.push(this.copyMovePopup.renderShadow(cellAt));
         } else if (this.mkdirPopup.active) {
             out.push(this.mkdirPopup.render(this.rows, this.cols, t));
             out.push(this.mkdirPopup.renderShadow(cellAt));
@@ -1037,12 +1289,15 @@ export class Panel {
         const actionSlots: { action: keyof KeyBindings; label: string }[] = [
             { action: 'view', label: 'View' },
             { action: 'edit', label: 'Edit' },
+            { action: 'copy', label: 'Copy' },
+            { action: 'move', label: 'Move' },
             { action: 'mkdir', label: 'Mkdir' },
             { action: 'delete', label: 'Del' },
+            { action: 'menu', label: 'Conf' },
             { action: 'quit', label: 'Quit' },
         ];
         const defaultLabels: Record<number, string> = {
-            1: 'Help', 2: 'Menu', 5: 'Copy', 6: 'Move', 9: 'Conf',
+            1: 'Help', 2: 'Menu', 9: 'Conf',
         };
         const keys: { num: string; label: string }[] = [];
         for (let i = 1; i <= 10; i++) {

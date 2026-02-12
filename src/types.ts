@@ -1,5 +1,7 @@
 import { Theme } from './settings';
 
+export type SortMode = 'name' | 'extension' | 'size' | 'date' | 'unsorted';
+
 export interface DriveEntry {
     label: string;
     description: string;
@@ -53,4 +55,5 @@ export interface PaneRenderContext {
     theme: Theme;
     isActive: boolean;
     showClock: boolean;
+    selected?: Set<string>;
 }

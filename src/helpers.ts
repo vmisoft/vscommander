@@ -8,7 +8,10 @@ export function applyStyle(s: TextStyle): string {
     return out;
 }
 
-export function entryRenderStyle(entry: DirEntry, t: Theme): RenderStyle {
+export function entryRenderStyle(entry: DirEntry, t: Theme, isSelected?: boolean): RenderStyle {
+    if (isSelected) {
+        return entry.isDir ? t.selectedDir : t.selectedFile;
+    }
     const isHidden = entry.name.startsWith('.') && entry.name !== '..';
     if (isHidden) {
         return entry.isDir ? t.hiddenDir : t.hiddenFile;
@@ -48,9 +51,10 @@ export function computePaneGeometry(startCol: number, width: number, numCols: nu
     return { startCol, width, innerStart, innerWidth, numCols: effectiveCols, colStarts, colWidths, dividerCols };
 }
 
-export function computeLayout(rows: number, cols: number, numCols: number, leftWidth?: number): Layout {
+export function computeLayout(rows: number, cols: number, numCols: number, leftWidth?: number, leftCols?: number, rightCols?: number): Layout {
     const listHeight = Math.max(1, rows - 7);
-    const clampedCols = Math.max(1, Math.min(3, numCols));
+    const lCols = Math.max(1, Math.min(3, leftCols ?? numCols));
+    const rCols = Math.max(1, Math.min(3, rightCols ?? numCols));
     const lw = leftWidth ?? Math.floor(cols / 2);
     const rightWidth = cols - lw;
 
@@ -64,8 +68,8 @@ export function computeLayout(rows: number, cols: number, numCols: number, leftW
         bottomRow: 5 + listHeight,
         cmdRow: rows - 1,
         fkeyRow: rows,
-        leftPane: computePaneGeometry(1, lw, clampedCols),
-        rightPane: computePaneGeometry(lw + 1, rightWidth, clampedCols),
+        leftPane: computePaneGeometry(1, lw, lCols),
+        rightPane: computePaneGeometry(lw + 1, rightWidth, rCols),
     };
 }
 

@@ -1206,7 +1206,7 @@ export class Panel {
             ];
             const spinner = spinnerFrames[this.spinnerFrame % spinnerFrames.length];
             const display = (' ' + spinner + ' Running... ' + this.settings.toggleKey + ' for details').slice(0, cols);
-            out.push(applyStyle(t.commandLine.idle));
+            out.push(applyStyle(t.commandLineBusy.idle));
             out.push(moveTo(cmdRow, 1));
             out.push(display);
             if (display.length < cols) {

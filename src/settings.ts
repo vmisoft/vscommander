@@ -29,6 +29,7 @@ export interface Theme {
     info: RenderStyle;
     status: RenderStyle;
     commandLine: RenderStyle;
+    commandLineBusy: RenderStyle;
     clock: RenderStyle;
     fkeyNum: RenderStyle;
     fkeyLabel: RenderStyle;
@@ -84,6 +85,7 @@ export const DEFAULT_THEME: Theme = {
     info: rs(s(AQUA, DARK_BLUE)),
     status: rs(s(AQUA, DARK_BLUE)),
     commandLine: rs(s(LIGHT_GREY, BLACK)),
+    commandLineBusy: rs(s(YELLOW, BLACK)),
     clock: rs(s(BLACK, DARK_TEAL)),
     fkeyNum: rs(s(PURE_WHITE, BLACK)),
     fkeyLabel: rs(s(BLACK, DARK_TEAL)),

@@ -50,6 +50,12 @@
       },
       {
         "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u001b[15~" },
+        "key": "f5",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
         "args": { "text": "\u001b[1;5D" },
         "key": "ctrl+left",
         "when": "terminalFocus && vscommander.panelVisible"

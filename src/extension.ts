@@ -1,12 +1,15 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import * as path from 'path';
-import * as fs from 'fs';
 import { spawnShell, ShellProxy } from './shell';
 import { Panel } from './panel';
 import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings } from './settings';
-import { CopyMoveResult, OverwriteMode } from './copyMovePopup';
+import { CopyMoveResult } from './copyMovePopup';
 import { DirectoryInfoProvider } from './directoryInfo';
+import { BlinkTimer, PollTimer } from './timerManager';
+import { makeDirectories, copyMoveOne } from './fileOps';
+import { ShellRouter } from './shellRouter';
+import { QuickViewController, QuickViewHost } from './quickView';
 
 function readSettings(): PanelSettings {
     const cfg = vscode.workspace.getConfiguration('vscommander');
@@ -15,7 +18,7 @@ function readSettings(): PanelSettings {
         showDotfiles: cfg.get<boolean>('showDotfiles', DEFAULT_SETTINGS.showDotfiles),
         clockEnabled: cfg.get<boolean>('clock', DEFAULT_SETTINGS.clockEnabled),
         panelColumns: cfg.get<number>('panelColumns', DEFAULT_SETTINGS.panelColumns),
-        workspaceFolders: (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath),
+        workspaceDirs: (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath),
         toggleKey,
         keys: {
             view: cfg.get<string>('keyView', DEFAULT_KEY_BINDINGS.view),
@@ -48,28 +51,74 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
     private shell: ShellProxy | undefined;
     private panel: Panel | undefined;
-    private shellOutputBuffer: string[] = [];
+    private shellRouter = new ShellRouter();
     private cols = 80;
     private rows = 24;
     private cwd: string;
-    private clockTimer: ReturnType<typeof setInterval> | undefined;
-    private blinkTimer: ReturnType<typeof setInterval> | undefined;
-    private cmdBlinkTimer: ReturnType<typeof setInterval> | undefined;
-    private mkdirBlinkTimer: ReturnType<typeof setInterval> | undefined;
-    private copyMoveBlinkTimer: ReturnType<typeof setInterval> | undefined;
+    private clockTimer = new BlinkTimer(30000);
+    private blinkTimer = new BlinkTimer(500);
+    private cmdBlinkTimer = new BlinkTimer(500);
+    private mkdirBlinkTimer = new BlinkTimer(500);
+    private copyMoveBlinkTimer = new BlinkTimer(500);
     private isDetached = false;
-    private quickViewActive = false;
-    private quickViewSide: 'left' | 'right' = 'right';
-    private lastQuickViewFile: string | undefined;
-    private lastQuickViewType: 'file' | 'dir' | 'none' = 'none';
-    private cdSuppressUntil = 0;
+    private quickView: QuickViewController;
     private commandRunning = false;
-    private commandPollTimer: ReturnType<typeof setTimeout> | undefined;
+    private commandPollTimer = new PollTimer();
     private commandIdleCount = 0;
-    private spinnerTimer: ReturnType<typeof setInterval> | undefined;
+    private spinnerTimer = new BlinkTimer(150);
 
     constructor(cwd: string) {
         this.cwd = cwd;
+        const host: QuickViewHost = {
+            openSplit: (filePath, targetType, side) => {
+                const uri = targetType === 'dir'
+                    ? vscode.Uri.parse('vscommander-dirinfo:directory-info')
+                    : vscode.Uri.file(filePath);
+                if (side === 'right') {
+                    vscode.commands.executeCommand('vscode.open', uri, {
+                        viewColumn: vscode.ViewColumn.Beside,
+                        preview: true,
+                        preserveFocus: true,
+                    });
+                } else {
+                    vscode.commands.executeCommand('vscode.open', uri, {
+                        viewColumn: vscode.ViewColumn.Beside,
+                        preview: true,
+                        preserveFocus: false,
+                    }).then(() => {
+                        vscode.commands.executeCommand('workbench.action.moveActiveEditorGroupLeft').then(() => {
+                            vscode.commands.executeCommand('workbench.action.focusNextGroup');
+                        });
+                    });
+                }
+            },
+            updateSplit: (filePath, targetType, side) => {
+                const uri = targetType === 'dir'
+                    ? vscode.Uri.parse('vscommander-dirinfo:directory-info')
+                    : vscode.Uri.file(filePath);
+                const viewColumn = side === 'right'
+                    ? vscode.ViewColumn.Two
+                    : vscode.ViewColumn.One;
+                vscode.commands.executeCommand('vscode.open', uri, {
+                    viewColumn,
+                    preview: true,
+                    preserveFocus: true,
+                });
+            },
+            closeSplit: (side) => {
+                const targetGroup = side === 'right'
+                    ? vscode.ViewColumn.Two
+                    : vscode.ViewColumn.One;
+                const groups = vscode.window.tabGroups.all;
+                const group = groups.find(g => g.viewColumn === targetGroup);
+                if (group) {
+                    vscode.window.tabGroups.close(group);
+                }
+            },
+            cancelDirScan: () => dirInfoProvider.cancel(),
+            scanDir: (dirPath) => dirInfoProvider.scan(dirPath),
+        };
+        this.quickView = new QuickViewController(host);
     }
 
     open(initialDimensions: vscode.TerminalDimensions | undefined): void {
@@ -93,17 +142,15 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
         if (this.shell) {
             this.shell.onData((data: string) => {
-                if (this.panel) {
-                    if (Date.now() >= this.cdSuppressUntil) {
-                        this.panel.termBuffer.feed(data);
-                    }
+                if (this.panel && !this.shellRouter.isSuppressed()) {
+                    this.panel.termBuffer.feed(data);
                 }
 
                 if (!this.panel?.visible) {
                     this.writeEmitter.fire(data);
                 } else {
-                    if (Date.now() >= this.cdSuppressUntil) {
-                        this.shellOutputBuffer.push(data);
+                    if (!this.shellRouter.isSuppressed()) {
+                        this.shellRouter.shellOutputBuffer.push(data);
                     }
                     if (this.panel) {
                         const update = this.panel.renderShellUpdate();
@@ -120,18 +167,22 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         }
 
         this.startClockTimer();
-        this.startCmdBlinkTimer();
+        this.restartCmdBlinkTimer();
 
         this.writeEmitter.fire(this.panel.show());
         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', true);
     }
 
     close(): void {
-        this.stopClockTimer();
-        this.stopBlinkTimer();
-        this.stopCmdBlinkTimer();
-        this.stopMkdirBlinkTimer();
-        this.stopSpinnerTimer();
+        if (this.quickView.active) {
+            this.quickView.close();
+        }
+        this.clockTimer.stop();
+        this.blinkTimer.stop();
+        this.cmdBlinkTimer.stop();
+        this.mkdirBlinkTimer.stop();
+        this.copyMoveBlinkTimer.stop();
+        this.spinnerTimer.stop();
         this.stopCommandPoll();
         this.shell?.kill();
         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
@@ -147,27 +198,28 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     this.closeEmitter.fire();
                     return;
                 case 'close':
-                    if (this.quickViewActive) {
+                    if (this.quickView.active) {
                         this.panel.quickViewMode = false;
-                        this.closeQuickView();
+                        this.quickView.close();
                     }
-                    this.stopBlinkTimer();
-                    this.stopCmdBlinkTimer();
+                    this.blinkTimer.stop();
+                    this.cmdBlinkTimer.stop();
                     this.writeEmitter.fire(this.panel.hide());
-                    this.flushShellOutputBuffer();
-                    this.refreshShellPrompt();
+                    this.shellRouter.flush(s => this.writeEmitter.fire(s));
+                    if (this.shell) this.shellRouter.refreshPrompt(this.shell);
                     vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
                     break;
                 case 'redraw':
                     this.writeEmitter.fire(result.data);
                     if (result.chdir) {
-                        this.changeShellDir(result.chdir);
+                        if (this.shell && this.panel) this.shellRouter.changeDir(result.chdir, this.shell, this.panel);
                     }
-                    if (this.quickViewActive) {
+                    if (this.quickView.active) {
                         if (this.panel.quickViewMode) {
-                            this.updateQuickViewFromCursor();
+                            const t = this.panel.getQuickViewTarget();
+                            this.quickView.updateFromCursor(t.path, t.type);
                         } else {
-                            this.closeQuickView();
+                            this.quickView.close();
                         }
                     }
                     break;
@@ -185,10 +237,10 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                         this.commandIdleCount = 0;
                         this.pollCommandDone();
                     } else {
-                        this.stopBlinkTimer();
-                        this.stopCmdBlinkTimer();
+                        this.blinkTimer.stop();
+                        this.cmdBlinkTimer.stop();
                         this.writeEmitter.fire(this.panel.hide());
-                        this.flushShellOutputBuffer();
+                        this.shellRouter.flush(s => this.writeEmitter.fire(s));
                         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
                         this.commandRunning = true;
                         this.commandIdleCount = 0;
@@ -206,9 +258,9 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     this.toggleDetach();
                     break;
                 case 'openFile':
-                    if (this.quickViewActive) {
+                    if (this.quickView.active) {
                         this.panel.quickViewMode = false;
-                        this.closeQuickView();
+                        this.quickView.close();
                     }
                     this.openFile(result.filePath);
                     break;
@@ -220,71 +272,68 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     this.deleteFile(result.filePath, result.toTrash);
                     break;
                 case 'mkdir':
-                    this.makeDirectory(result.cwd, result.folderName, result.linkType, result.linkTarget, result.multipleNames);
+                    this.makeDirectory(result.cwd, result.dirName, result.linkType, result.linkTarget, result.multipleNames);
                     break;
                 case 'copyMove':
                     this.executeCopyMove(result.result);
                     break;
                 case 'quickView':
                     this.writeEmitter.fire(result.data);
-                    this.openQuickView(result.filePath, result.targetType, result.side);
+                    this.quickView.open(result.filePath, result.targetType, result.side);
                     break;
                 case 'quickViewClose':
-                    this.closeQuickView();
+                    this.quickView.close();
                     this.writeEmitter.fire(result.data);
                     if (result.chdir) {
-                        this.changeShellDir(result.chdir);
+                        if (this.shell && this.panel) this.shellRouter.changeDir(result.chdir, this.shell, this.panel);
                     }
                     break;
                 case 'none':
                     break;
             }
             if (this.panel.isSearchActive) {
-                this.resetBlinkCursor();
+                this.blinkTimer.restart(
+                    () => this.panel!.resetSearchBlink(),
+                    () => this.panel?.isSearchActive ? this.panel.renderSearchCursorBlink() : (this.blinkTimer.stop(), ''),
+                    s => this.writeEmitter.fire(s),
+                );
             }
             if (wasSearchActive !== this.panel.isSearchActive) {
-                this.syncBlinkTimer();
+                this.blinkTimer.sync(
+                    () => !!this.panel?.isSearchActive,
+                    () => this.panel!.resetSearchBlink(),
+                    () => {
+                        if (this.panel?.isSearchActive) return this.panel.renderSearchCursorBlink();
+                        this.blinkTimer.stop();
+                    },
+                    s => this.writeEmitter.fire(s),
+                );
             }
-            this.syncMkdirBlinkTimer();
-            this.syncCopyMoveBlinkTimer();
-            this.resetCmdBlink();
+            this.mkdirBlinkTimer.sync(
+                () => !!this.panel?.isMkdirBlinkActive,
+                () => this.panel!.resetMkdirBlink(),
+                () => {
+                    if (this.panel?.isMkdirBlinkActive) return this.panel.renderMkdirCursorBlink();
+                    this.mkdirBlinkTimer.stop();
+                },
+                s => this.writeEmitter.fire(s),
+            );
+            this.copyMoveBlinkTimer.sync(
+                () => !!this.panel?.isCopyMoveBlinkActive,
+                () => this.panel!.resetCopyMoveBlink(),
+                () => {
+                    if (this.panel?.isCopyMoveBlinkActive) return this.panel.renderCopyMoveCursorBlink();
+                    this.copyMoveBlinkTimer.stop();
+                },
+                s => this.writeEmitter.fire(s),
+            );
+            this.restartCmdBlinkTimer();
         } else {
             this.shell?.write(data);
-            this.trackShellInputLen(data);
+            if (this.panel) this.shellRouter.trackInputLen(data, this.panel);
         }
     }
 
-    private trackShellInputLen(data: string): void {
-        if (!this.panel) return;
-        if (data === '\r') {
-            this.panel.shellInputLen = 0;
-        } else if (data === '\x7f') {
-            this.panel.shellInputLen = Math.max(0, this.panel.shellInputLen - 1);
-        } else if (data === '\x03' || data === '\x15') {
-            this.panel.shellInputLen = 0;
-        } else if (data.length === 1 && data.charCodeAt(0) >= 0x20) {
-            this.panel.shellInputLen++;
-        }
-    }
-
-    private refreshShellPrompt(): void {
-        if (!this.shell || !this.cdSuppressUntil) return;
-        this.cdSuppressUntil = 0;
-        this.shell.write('\x15\r');
-    }
-
-    private changeShellDir(dir: string): void {
-        if (!this.shell) return;
-        this.shell.write('\x15');
-        if (this.panel) {
-            this.panel.shellInputLen = 0;
-        }
-        this.cdSuppressUntil = Date.now() + 200;
-        const cmd = os.platform() === 'win32'
-            ? 'cd "' + dir.replace(/"/g, '`"') + '"\r'
-            : "cd '" + dir.replace(/'/g, "'\\''") + "'\r";
-        this.shell.write(cmd);
-    }
 
     setDimensions(dimensions: vscode.TerminalDimensions): void {
         this.cols = dimensions.columns;
@@ -298,146 +347,20 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         }
     }
 
-    private flushShellOutputBuffer(): void {
-        if (this.shellOutputBuffer.length > 0) {
-            this.writeEmitter.fire(this.shellOutputBuffer.join(''));
-            this.shellOutputBuffer = [];
-        }
-    }
-
     private startClockTimer(): void {
-        this.clockTimer = setInterval(() => {
-            if (this.panel?.visible && this.panel.settings.clockEnabled) {
-                const update = this.panel.renderClockUpdate();
-                if (update) {
-                    this.writeEmitter.fire(update);
-                }
-            }
-        }, 30000);
+        this.clockTimer.start(
+            () => this.panel?.visible && this.panel.settings.clockEnabled
+                ? this.panel.renderClockUpdate() : undefined,
+            s => this.writeEmitter.fire(s),
+        );
     }
 
-    private stopClockTimer(): void {
-        if (this.clockTimer) {
-            clearInterval(this.clockTimer);
-            this.clockTimer = undefined;
-        }
-    }
-
-    private syncBlinkTimer(): void {
-        if (this.panel?.isSearchActive && !this.blinkTimer) {
-            this.panel.resetSearchBlink();
-            this.blinkTimer = setInterval(() => {
-                if (this.panel?.isSearchActive) {
-                    const update = this.panel.renderSearchCursorBlink();
-                    if (update) {
-                        this.writeEmitter.fire(update);
-                    }
-                } else {
-                    this.stopBlinkTimer();
-                }
-            }, 500);
-        } else if (!this.panel?.isSearchActive && this.blinkTimer) {
-            this.stopBlinkTimer();
-        }
-    }
-
-    private resetBlinkCursor(): void {
-        if (!this.panel) return;
-        this.panel.resetSearchBlink();
-        if (this.blinkTimer) {
-            clearInterval(this.blinkTimer);
-            this.blinkTimer = undefined;
-        }
-        this.syncBlinkTimer();
-    }
-
-    private stopBlinkTimer(): void {
-        if (this.blinkTimer) {
-            clearInterval(this.blinkTimer);
-            this.blinkTimer = undefined;
-        }
-    }
-
-    private syncMkdirBlinkTimer(): void {
-        if (this.panel?.isMkdirBlinkActive && !this.mkdirBlinkTimer) {
-            this.panel.resetMkdirBlink();
-            this.mkdirBlinkTimer = setInterval(() => {
-                if (this.panel?.isMkdirBlinkActive) {
-                    const update = this.panel.renderMkdirCursorBlink();
-                    if (update) {
-                        this.writeEmitter.fire(update);
-                    }
-                } else {
-                    this.stopMkdirBlinkTimer();
-                }
-            }, 500);
-        } else if (!this.panel?.isMkdirBlinkActive && this.mkdirBlinkTimer) {
-            this.stopMkdirBlinkTimer();
-        }
-    }
-
-    private stopMkdirBlinkTimer(): void {
-        if (this.mkdirBlinkTimer) {
-            clearInterval(this.mkdirBlinkTimer);
-            this.mkdirBlinkTimer = undefined;
-        }
-    }
-
-    private syncCopyMoveBlinkTimer(): void {
-        if (this.panel?.isCopyMoveBlinkActive && !this.copyMoveBlinkTimer) {
-            this.panel.resetCopyMoveBlink();
-            this.copyMoveBlinkTimer = setInterval(() => {
-                if (this.panel?.isCopyMoveBlinkActive) {
-                    const update = this.panel.renderCopyMoveCursorBlink();
-                    if (update) {
-                        this.writeEmitter.fire(update);
-                    }
-                } else {
-                    this.stopCopyMoveBlinkTimer();
-                }
-            }, 500);
-        } else if (!this.panel?.isCopyMoveBlinkActive && this.copyMoveBlinkTimer) {
-            this.stopCopyMoveBlinkTimer();
-        }
-    }
-
-    private stopCopyMoveBlinkTimer(): void {
-        if (this.copyMoveBlinkTimer) {
-            clearInterval(this.copyMoveBlinkTimer);
-            this.copyMoveBlinkTimer = undefined;
-        }
-    }
-
-    private startCmdBlinkTimer(): void {
-        this.stopCmdBlinkTimer();
-        if (this.panel) {
-            this.panel.resetCmdBlink();
-        }
-        this.cmdBlinkTimer = setInterval(() => {
-            if (this.panel?.visible) {
-                const update = this.panel.renderCmdCursorBlink();
-                if (update) {
-                    this.writeEmitter.fire(update);
-                }
-            }
-        }, 500);
-    }
-
-    private resetCmdBlink(): void {
-        if (!this.panel) return;
-        this.panel.resetCmdBlink();
-        if (this.cmdBlinkTimer) {
-            clearInterval(this.cmdBlinkTimer);
-            this.cmdBlinkTimer = undefined;
-        }
-        this.startCmdBlinkTimer();
-    }
-
-    private stopCmdBlinkTimer(): void {
-        if (this.cmdBlinkTimer) {
-            clearInterval(this.cmdBlinkTimer);
-            this.cmdBlinkTimer = undefined;
-        }
+    private restartCmdBlinkTimer(): void {
+        this.cmdBlinkTimer.restart(
+            () => { if (this.panel) this.panel.resetCmdBlink(); },
+            () => this.panel?.visible ? this.panel.renderCmdCursorBlink() : undefined,
+            s => this.writeEmitter.fire(s),
+        );
     }
 
     private syncPaneCwd(): void {
@@ -452,83 +375,67 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
     private pollCommandDone(): void {
         if (!this.commandRunning || !this.shell) return;
-        this.commandPollTimer = setTimeout(() => {
-            if (!this.commandRunning || !this.shell) return;
+        this.commandPollTimer.start(100, () => {
+            if (!this.commandRunning || !this.shell) return false;
             if (this.shell.pty.process === this.shell.shellProcess) {
                 this.commandIdleCount++;
                 if (this.commandIdleCount >= 2) {
                     this.commandRunning = false;
-                    this.commandPollTimer = undefined;
                     if (this.panel && this.panel.visible && this.panel.waitingMode) {
-                        this.stopSpinnerTimer();
+                        this.spinnerTimer.stop();
                         this.syncPaneCwd();
                         this.panel.settings = readSettings();
                         this.panel.waitingMode = false;
                         this.panel.left.refresh(this.panel.settings);
                         this.panel.right.refresh(this.panel.settings);
                         this.writeEmitter.fire(this.panel.redraw());
-                        this.startCmdBlinkTimer();
+                        this.restartCmdBlinkTimer();
                     } else if (this.panel && this.panel.visible && !this.panel.waitingMode) {
                         this.syncPaneCwd();
                         this.panel.settings = readSettings();
                         this.panel.left.refresh(this.panel.settings);
                         this.panel.right.refresh(this.panel.settings);
                         this.writeEmitter.fire(this.panel.redraw());
-                        this.startCmdBlinkTimer();
+                        this.restartCmdBlinkTimer();
                     } else if (this.panel && !this.panel.visible) {
                         this.syncPaneCwd();
                         this.panel.settings = readSettings();
                         this.writeEmitter.fire(this.panel.show());
-                        this.startCmdBlinkTimer();
+                        this.restartCmdBlinkTimer();
                         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', true);
                     }
-                    return;
+                    return false;
                 }
             } else {
                 this.commandIdleCount = 0;
             }
-            this.pollCommandDone();
-        }, 100);
+            return true;
+        });
     }
 
     private stopCommandPoll(): void {
         this.commandRunning = false;
-        if (this.commandPollTimer) {
-            clearTimeout(this.commandPollTimer);
-            this.commandPollTimer = undefined;
-        }
+        this.commandPollTimer.stop();
     }
 
     private startSpinnerTimer(): void {
-        this.stopSpinnerTimer();
-        this.spinnerTimer = setInterval(() => {
-            if (this.panel?.waitingMode) {
-                const update = this.panel.renderSpinnerUpdate();
-                if (update) {
-                    this.writeEmitter.fire(update);
-                }
-            }
-        }, 150);
-    }
-
-    private stopSpinnerTimer(): void {
-        if (this.spinnerTimer) {
-            clearInterval(this.spinnerTimer);
-            this.spinnerTimer = undefined;
-        }
+        this.spinnerTimer.start(
+            () => this.panel?.waitingMode ? this.panel.renderSpinnerUpdate() : undefined,
+            s => this.writeEmitter.fire(s),
+        );
     }
 
     toggle(): void {
         if (!this.panel) return;
         if (this.commandRunning) {
             if (this.panel.visible) {
-                if (this.quickViewActive) {
+                if (this.quickView.active) {
                     this.panel.quickViewMode = false;
-                    this.closeQuickView();
+                    this.quickView.close();
                 }
-                this.stopSpinnerTimer();
+                this.spinnerTimer.stop();
                 this.writeEmitter.fire(this.panel.hide());
-                this.flushShellOutputBuffer();
+                this.shellRouter.flush(s => this.writeEmitter.fire(s));
                 vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
             } else {
                 this.panel.settings = readSettings();
@@ -541,14 +448,14 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         } else {
             this.stopCommandPoll();
             if (this.panel.visible) {
-                if (this.quickViewActive) {
+                if (this.quickView.active) {
                     this.panel.quickViewMode = false;
-                    this.closeQuickView();
+                    this.quickView.close();
                 }
-                this.stopCmdBlinkTimer();
+                this.cmdBlinkTimer.stop();
                 this.writeEmitter.fire(this.panel.hide());
-                this.flushShellOutputBuffer();
-                this.refreshShellPrompt();
+                this.shellRouter.flush(s => this.writeEmitter.fire(s));
+                if (this.shell) this.shellRouter.refreshPrompt(this.shell);
                 vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
             } else {
                 const shellBusy = this.shell !== undefined && this.shell.pty.process !== this.shell.shellProcess;
@@ -563,7 +470,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     this.pollCommandDone();
                 } else {
                     this.writeEmitter.fire(this.panel.show());
-                    this.startCmdBlinkTimer();
+                    this.restartCmdBlinkTimer();
                 }
                 vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', true);
             }
@@ -605,90 +512,12 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
     private viewFile(filePath: string): void {
         const uri = vscode.Uri.file(filePath);
-        const wsFolder = vscode.workspace.getWorkspaceFolder(uri);
-        if (wsFolder) {
+        const wsDir = vscode.workspace.getWorkspaceFolder(uri);
+        if (wsDir) {
             vscode.commands.executeCommand('revealInExplorer', uri);
             blinkDecoration.blink(uri, 24);
         } else {
             vscode.commands.executeCommand('revealFileInOS', uri);
-        }
-    }
-
-    private openQuickView(filePath: string, targetType: 'file' | 'dir' | 'none', side: 'left' | 'right'): void {
-        this.quickViewActive = true;
-        this.quickViewSide = side;
-        this.lastQuickViewFile = filePath || undefined;
-        this.lastQuickViewType = targetType;
-
-        let uri: vscode.Uri;
-        if (targetType === 'dir' && filePath) {
-            uri = vscode.Uri.parse('vscommander-dirinfo:directory-info');
-            dirInfoProvider.scan(filePath);
-        } else if (targetType === 'file' && filePath) {
-            uri = vscode.Uri.file(filePath);
-        } else {
-            uri = vscode.Uri.parse('vscommander-dirinfo:directory-info');
-        }
-
-        if (side === 'right') {
-            vscode.commands.executeCommand('vscode.open', uri, {
-                viewColumn: vscode.ViewColumn.Beside,
-                preview: true,
-                preserveFocus: true,
-            });
-        } else {
-            vscode.commands.executeCommand('vscode.open', uri, {
-                viewColumn: vscode.ViewColumn.Beside,
-                preview: true,
-                preserveFocus: false,
-            }).then(() => {
-                vscode.commands.executeCommand('workbench.action.moveActiveEditorGroupLeft').then(() => {
-                    vscode.commands.executeCommand('workbench.action.focusNextGroup');
-                });
-            });
-        }
-    }
-
-    private updateQuickViewFromCursor(): void {
-        if (!this.panel || !this.quickViewActive) return;
-        const target = this.panel.getQuickViewTarget();
-        if (target.type === 'none') return;
-        if (target.path === this.lastQuickViewFile && target.type === this.lastQuickViewType) return;
-        this.lastQuickViewFile = target.path;
-        this.lastQuickViewType = target.type;
-
-        let uri: vscode.Uri;
-        if (target.type === 'dir') {
-            uri = vscode.Uri.parse('vscommander-dirinfo:directory-info');
-            dirInfoProvider.scan(target.path);
-        } else {
-            dirInfoProvider.cancel();
-            uri = vscode.Uri.file(target.path);
-        }
-
-        const viewColumn = this.quickViewSide === 'right'
-            ? vscode.ViewColumn.Two
-            : vscode.ViewColumn.One;
-        vscode.commands.executeCommand('vscode.open', uri, {
-            viewColumn,
-            preview: true,
-            preserveFocus: true,
-        });
-    }
-
-    private closeQuickView(): void {
-        if (!this.quickViewActive) return;
-        this.quickViewActive = false;
-        this.lastQuickViewFile = undefined;
-        this.lastQuickViewType = 'none';
-        dirInfoProvider.cancel();
-        const targetGroup = this.quickViewSide === 'right'
-            ? vscode.ViewColumn.Two
-            : vscode.ViewColumn.One;
-        const groups = vscode.window.tabGroups.all;
-        const group = groups.find(g => g.viewColumn === targetGroup);
-        if (group) {
-            vscode.window.tabGroups.close(group);
         }
     }
 
@@ -701,27 +530,8 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         });
     }
 
-    private makeDirectory(cwd: string, folderName: string, linkType: 'none' | 'symbolic' | 'junction', linkTarget: string, multipleNames: boolean): void {
-        const names = multipleNames
-            ? folderName.split(';').map(n => n.trim()).filter(n => n.length > 0)
-            : [folderName.trim()];
-        let lastName = '';
-        for (const name of names) {
-            if (!name) continue;
-            const fullPath = path.join(cwd, name);
-            try {
-                if (linkType === 'none') {
-                    fs.mkdirSync(fullPath, { recursive: true });
-                } else {
-                    const resolvedTarget = path.resolve(cwd, linkTarget);
-                    const type = linkType === 'junction' ? 'junction' : 'dir';
-                    fs.symlinkSync(resolvedTarget, fullPath, type);
-                }
-                lastName = name;
-            } catch {
-                // ignore per-name errors
-            }
-        }
+    private makeDirectory(cwd: string, dirName: string, linkType: 'none' | 'symbolic' | 'junction', linkTarget: string, multipleNames: boolean): void {
+        const lastName = makeDirectories(cwd, dirName, linkType, linkTarget, multipleNames);
         this.refreshPanels();
         if (lastName && this.panel) {
             const pane = this.panel.activePaneObj;
@@ -746,7 +556,6 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
             { location: vscode.ProgressLocation.Notification, title: label + ' files...', cancellable: true },
             async (progress, token) => {
                 const total = sourceFiles.length;
-                let completed = 0;
                 for (const fileName of sourceFiles) {
                     if (token.isCancellationRequested) break;
                     const src = path.join(sourceCwd, fileName);
@@ -755,11 +564,17 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                         : path.join(targetDir, fileName);
                     progress.report({ message: fileName, increment: 100 / total });
                     try {
-                        await this.copyMoveOne(src, dst, isMove, overwrite);
+                        await copyMoveOne(src, dst, isMove, overwrite, async (name) => {
+                            const action = await vscode.window.showWarningMessage(
+                                '"' + name + '" already exists. Overwrite?',
+                                { modal: true },
+                                'Overwrite', 'Skip',
+                            );
+                            return action === 'Overwrite';
+                        });
                     } catch {
                         // skip individual file errors
                     }
-                    completed++;
                 }
                 if (this.panel) {
                     this.panel.activePaneObj.clearSelection();
@@ -767,70 +582,6 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 this.refreshPanels();
             }
         );
-    }
-
-    private async copyMoveOne(src: string, dst: string, isMove: boolean, overwrite: OverwriteMode): Promise<void> {
-        const srcStat = await fs.promises.stat(src);
-        let dstPath = dst;
-
-        try {
-            const dstStat = await fs.promises.stat(dst);
-            if (dstStat.isDirectory()) {
-                dstPath = path.join(dst, path.basename(src));
-            }
-        } catch {
-            // dst doesn't exist — use as-is
-        }
-
-        const exists = await fs.promises.access(dstPath).then(() => true, () => false);
-        if (exists) {
-            if (overwrite === 'skip') return;
-            if (overwrite === 'ask') {
-                const action = await vscode.window.showWarningMessage(
-                    '"' + path.basename(dstPath) + '" already exists. Overwrite?',
-                    { modal: true },
-                    'Overwrite', 'Skip'
-                );
-                if (action !== 'Overwrite') return;
-            }
-        }
-
-        if (isMove) {
-            try {
-                await fs.promises.rename(src, dstPath);
-                return;
-            } catch {
-                // cross-device — fall through to copy+delete
-            }
-        }
-
-        if (srcStat.isDirectory()) {
-            await this.copyDirRecursive(src, dstPath);
-            if (isMove) {
-                await fs.promises.rm(src, { recursive: true, force: true });
-            }
-        } else {
-            const dstDir = path.dirname(dstPath);
-            await fs.promises.mkdir(dstDir, { recursive: true });
-            await fs.promises.copyFile(src, dstPath);
-            if (isMove) {
-                await fs.promises.unlink(src);
-            }
-        }
-    }
-
-    private async copyDirRecursive(src: string, dst: string): Promise<void> {
-        await fs.promises.mkdir(dst, { recursive: true });
-        const entries = await fs.promises.readdir(src, { withFileTypes: true });
-        for (const entry of entries) {
-            const srcPath = path.join(src, entry.name);
-            const dstPath = path.join(dst, entry.name);
-            if (entry.isDirectory()) {
-                await this.copyDirRecursive(srcPath, dstPath);
-            } else {
-                await fs.promises.copyFile(srcPath, dstPath);
-            }
-        }
     }
 
     private refreshPanels(): void {
@@ -910,6 +661,17 @@ export function activate(context: vscode.ExtensionContext) {
             iconPath: new vscode.ThemeIcon('preview'),
         });
         terminal.show();
+        const listener = vscode.window.onDidChangeActiveTerminal((t) => {
+            if (t === terminal) {
+                listener.dispose();
+                vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
+            }
+        });
+        // Fallback if the event already fired before the listener was set up
+        if (vscode.window.activeTerminal === terminal) {
+            listener.dispose();
+            vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
+        }
     });
 
     const toggleCmd = vscode.commands.registerCommand('vscommander.toggle', () => {
@@ -953,5 +715,6 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
+    dirInfoProvider.dispose();
     activeTerminal = undefined;
 }

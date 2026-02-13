@@ -2,12 +2,12 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     enterAltScreen, leaveAltScreen, clearScreen, showCursor, hideCursor,
-    resetStyle, moveTo, bgRgb, BOX, DBOX, MBOX, enableMouse, disableMouse
+    resetStyle, bgRgb, enableMouse, disableMouse
 } from './draw';
 import { MouseEvent, parseMouseEvent } from './mouse';
-import { PanelSettings, TextStyle, KeyBindings, matchesKeyBinding, getFKeyNumber } from './settings';
+import { PanelSettings, TextStyle, matchesKeyBinding } from './settings';
 import { Layout, PaneGeometry } from './types';
-import { applyStyle, computeLayout, entryRenderStyle } from './helpers';
+import { computeLayout } from './helpers';
 import { Pane } from './pane';
 import { Popup, PopupInputResult } from './popup';
 import { SearchPopup } from './searchPopup';
@@ -17,6 +17,10 @@ import { MkdirPopup } from './mkdirPopup';
 import { MenuPopup, MenuCommand } from './menuPopup';
 import { CopyMovePopup, CopyMoveMode, CopyMoveResult } from './copyMovePopup';
 import { TerminalBuffer } from './terminalBuffer';
+import { getCellAt } from './cellQuery';
+import { TerminalArea } from './terminalArea';
+import { FKeyBar } from './fkeyBar';
+import { CommandLine } from './commandLine';
 
 export type PanelInputResult =
     | { action: 'quit' }
@@ -30,9 +34,9 @@ export type PanelInputResult =
     | { action: 'openFile'; filePath: string }
     | { action: 'viewFile'; filePath: string }
     | { action: 'deleteFile'; filePath: string; toTrash: boolean }
-    | { action: 'mkdir'; cwd: string; folderName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean }
+    | { action: 'mkdir'; cwd: string; dirName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean }
     | { action: 'copyMove'; result: CopyMoveResult }
-    | { action: 'quickView'; data: string; filePath: string; targetType: 'file' | 'dir' | 'none'; side: 'left' | 'right' }
+    | { action: 'quickView'; data: string; filePath: string; targetType: 'file' | 'dir'; side: 'left' | 'right' }
     | { action: 'quickViewClose'; data: string; chdir?: string }
     | { action: 'none' };
 
@@ -43,7 +47,6 @@ export class Panel {
     left: Pane;
     right: Pane;
     activePane: 'left' | 'right' = 'left';
-    shellInputLen = 0;
     settings: PanelSettings;
     searchPopup: SearchPopup;
     drivePopup: DrivePopup;
@@ -52,12 +55,21 @@ export class Panel {
     menuPopup: MenuPopup;
     copyMovePopup: CopyMovePopup;
     termBuffer: TerminalBuffer;
+    private terminalArea = new TerminalArea();
+    private fkeyBar = new FKeyBar();
+    commandLine = new CommandLine();
     inactivePaneHidden = false;
     quickViewMode = false;
-    cmdCursorVisible = true;
     splitOffset = 0;
-    waitingMode = false;
-    spinnerFrame = 0;
+
+    get shellInputLen(): number { return this.commandLine.shellInputLen; }
+    set shellInputLen(v: number) { this.commandLine.shellInputLen = v; }
+    get cmdCursorVisible(): boolean { return this.commandLine.cmdCursorVisible; }
+    set cmdCursorVisible(v: boolean) { this.commandLine.cmdCursorVisible = v; }
+    get waitingMode(): boolean { return this.commandLine.waitingMode; }
+    set waitingMode(v: boolean) { this.commandLine.waitingMode = v; }
+    get spinnerFrame(): number { return this.commandLine.spinnerFrame; }
+    set spinnerFrame(v: number) { this.commandLine.spinnerFrame = v; }
     private lastClickTime = 0;
     private lastClickEntry = -1;
     private lastClickPane: 'left' | 'right' = 'left';
@@ -93,10 +105,8 @@ export class Panel {
     }
 
     renderSpinnerUpdate(): string {
-        if (!this.visible || !this.waitingMode) return '';
-        this.spinnerFrame++;
         const layout = this.getLayout();
-        return this.renderCommandLine(layout) + hideCursor();
+        return this.commandLine.renderSpinnerUpdate(this.cmdContext(layout));
     }
 
     resize(cols: number, rows: number): string {
@@ -115,6 +125,15 @@ export class Panel {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
+    }
+
+    private cmdContext(layout: Layout) {
+        return {
+            cols: this.cols, layout, settings: this.settings,
+            termBuffer: this.termBuffer, hasActivePopup: this.hasActivePopup,
+            visible: this.visible, inactivePaneHidden: this.inactivePaneHidden,
+            activePane: this.activePane,
+        };
     }
 
     private get leftWidth(): number {
@@ -151,10 +170,10 @@ export class Panel {
         return this.activePane === 'left' ? this.left : this.right;
     }
 
-    getQuickViewTarget(): { type: 'file' | 'dir' | 'none'; path: string } {
+    getQuickViewTarget(): { type: 'file' | 'dir'; path: string } {
         const pane = this.activePaneObj;
         const entry = pane.entries[pane.cursor];
-        if (!entry || entry.name === '..') return { type: 'none', path: '' };
+        if (!entry || entry.name === '..') return { type: 'dir', path: pane.cwd };
         const fullPath = path.join(pane.cwd, entry.name);
         return { type: entry.isDir ? 'dir' : 'file', path: fullPath };
     }
@@ -168,14 +187,12 @@ export class Panel {
     }
 
     resetCmdBlink(): void {
-        this.cmdCursorVisible = true;
+        this.commandLine.resetBlink();
     }
 
     renderCmdCursorBlink(): string {
-        if (!this.visible || this.waitingMode || this.hasActivePopup) return '';
-        this.cmdCursorVisible = !this.cmdCursorVisible;
         const layout = this.getLayout();
-        return this.renderCmdCursor(layout);
+        return this.commandLine.renderCursorBlink(this.cmdContext(layout));
     }
 
     renderClockUpdate(): string {
@@ -227,15 +244,11 @@ export class Panel {
     }
 
     renderShellUpdate(): string {
-        if (!this.visible || this.waitingMode || this.hasActivePopup) return '';
         const layout = this.getLayout();
-        const out: string[] = [];
-        if (this.inactivePaneHidden) {
-            out.push(this.renderTerminalArea(layout));
-        }
-        out.push(this.renderCommandLine(layout));
-        out.push(this.renderCmdCursor(layout));
-        return out.join('');
+        return this.commandLine.renderShellUpdate(
+            this.cmdContext(layout),
+            () => this.renderTerminalArea(layout),
+        );
     }
 
     handleInput(data: string): PanelInputResult {
@@ -643,30 +656,6 @@ export class Panel {
             return { action: 'none' };
         }
 
-        if (data === '\x7f') {
-            if (this.shellInputLen > 0) {
-                this.shellInputLen = Math.max(0, this.shellInputLen - 1);
-                return { action: 'input', data: '\x7f', redraw: '' };
-            }
-            return { action: 'none' };
-        }
-
-        if (data === '\x03') {
-            if (this.shellInputLen > 0) {
-                this.shellInputLen = 0;
-                return { action: 'input', data: '\x03', redraw: '' };
-            }
-            return { action: 'none' };
-        }
-
-        if (data === '\x15') {
-            if (this.shellInputLen > 0) {
-                this.shellInputLen = 0;
-                return { action: 'input', data: '\x15', redraw: '' };
-            }
-            return { action: 'none' };
-        }
-
         if (data.length === 2 && data.charCodeAt(0) === 0x1b && data.charCodeAt(1) >= 0x20) {
             const ch = data[1];
             const matchIdx = SearchPopup.findPrefixMatch(pane.entries, ch);
@@ -680,10 +669,8 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data.length === 1 && data.charCodeAt(0) >= 0x20) {
-            this.shellInputLen++;
-            return { action: 'input', data, redraw: '' };
-        }
+        const cmdResult = this.commandLine.handleInput(data);
+        if (cmdResult) return cmdResult;
 
         return { action: 'none' };
     }
@@ -887,7 +874,7 @@ export class Panel {
             return {
                 action: 'mkdir',
                 cwd: this.activePaneObj.cwd,
-                folderName: r.folderName,
+                dirName: r.dirName,
                 linkType: r.linkType,
                 linkTarget: r.linkTarget,
                 multipleNames: r.multipleNames,
@@ -1021,15 +1008,7 @@ export class Panel {
     }
 
     private handleMouseFKeyBar(col: number): PanelInputResult {
-        const slotWidth = Math.floor(this.cols / 10);
-        const slot = Math.min(9, Math.floor((col - 1) / slotWidth));
-        const fkeyNum = slot + 1;
-        const fkeySeqs: Record<number, string> = {
-            1: '\x1bOP', 2: '\x1bOQ', 3: '\x1bOR', 4: '\x1bOS',
-            5: '\x1b[15~', 6: '\x1b[17~', 7: '\x1b[18~', 8: '\x1b[19~',
-            9: '\x1b[20~', 10: '\x1b[21~',
-        };
-        const seq = fkeySeqs[fkeyNum];
+        const seq = this.fkeyBar.handleMouseClick(col, this.cols);
         if (seq) {
             return this.handleInput(seq);
         }
@@ -1122,7 +1101,7 @@ export class Panel {
         if (!entry || entry.name === '..') return { action: 'none' };
 
         const fullPath = path.join(pane.cwd, entry.name);
-        const kind = entry.isDir ? 'folder' : 'file';
+        const kind = entry.isDir ? 'directory' : 'file';
 
         if (toTrash) {
             const trashName = os.platform() === 'win32' ? 'Recycle Bin' : 'Trash';
@@ -1158,248 +1137,34 @@ export class Panel {
     }
 
     private getCellAt(row: number, col: number, layout: Layout): { ch: string; style: TextStyle } {
-        const t = this.settings.theme;
-        const border: TextStyle = t.border.idle;
-
-        if (row === layout.fkeyRow) {
-            return { ch: ' ', style: t.fkeyLabel.idle };
-        }
-        if (row === layout.cmdRow) {
-            return { ch: ' ', style: t.commandLine.idle };
-        }
-
-        const leftIsActive = this.activePane === 'left';
-
-        if (this.inactivePaneHidden && !this.quickViewMode) {
-            const hiddenGeo = leftIsActive ? layout.leftPane : layout.rightPane;
-            if (col >= hiddenGeo.startCol && col < hiddenGeo.startCol + hiddenGeo.width) {
-                return { ch: ' ', style: t.commandLine.idle };
-            }
-        }
-
-        let pane: Pane;
-        let geo: PaneGeometry;
-        let isActive: boolean;
-        if (this.quickViewMode) {
-            pane = this.activePaneObj;
-            geo = layout.leftPane;
-            isActive = true;
-        } else if (col <= layout.leftPane.startCol + layout.leftPane.width - 1) {
-            pane = this.left;
-            geo = layout.leftPane;
-            isActive = leftIsActive;
-        } else {
-            pane = this.right;
-            geo = layout.rightPane;
-            isActive = !leftIsActive;
-        }
-
-        const leftEdge = geo.startCol;
-        const rightEdge = geo.startCol + geo.width - 1;
-
-        if (row === layout.topRow) {
-            if (col === leftEdge) return { ch: DBOX.topLeft, style: border };
-            if (col === rightEdge) return { ch: DBOX.topRight, style: border };
-            return { ch: DBOX.horizontal, style: border };
-        }
-
-        if (row === layout.bottomRow) {
-            if (col === leftEdge) return { ch: DBOX.bottomLeft, style: border };
-            if (col === rightEdge) return { ch: DBOX.bottomRight, style: border };
-            return { ch: DBOX.horizontal, style: border };
-        }
-
-        if (row === layout.separatorRow) {
-            if (col === leftEdge) return { ch: MBOX.vertDoubleRight, style: border };
-            if (col === rightEdge) return { ch: MBOX.vertDoubleLeft, style: border };
-            for (const dc of geo.dividerCols) {
-                if (col === dc) return { ch: BOX.teeUp, style: border };
-            }
-            return { ch: BOX.horizontal, style: border };
-        }
-
-        if (col === leftEdge || col === rightEdge) {
-            return { ch: DBOX.vertical, style: border };
-        }
-
-        if (row === layout.headerRow) {
-            for (const dc of geo.dividerCols) {
-                if (col === dc) return { ch: BOX.vertical, style: border };
-            }
-            return { ch: ' ', style: t.header.idle };
-        }
-
-        if (row === layout.infoRow) {
-            return { ch: ' ', style: t.info.idle };
-        }
-
-        if (row >= layout.listStart && row < layout.separatorRow) {
-            for (const dc of geo.dividerCols) {
-                if (col === dc) return { ch: BOX.vertical, style: border };
-            }
-            let fileCol = -1;
-            for (let i = 0; i < geo.numCols; i++) {
-                if (col >= geo.colStarts[i] && col < geo.colStarts[i] + geo.colWidths[i]) {
-                    fileCol = i;
-                    break;
-                }
-            }
-            if (fileCol >= 0) {
-                const fileRow = row - layout.listStart;
-                const idx = pane.scroll + fileCol * layout.listHeight + fileRow;
-                if (idx < pane.entries.length) {
-                    const entry = pane.entries[idx];
-                    const isCursor = isActive && idx === pane.cursor;
-                    const rs = entryRenderStyle(entry, t);
-                    const style = isCursor ? rs.selected : rs.idle;
-                    const charPos = col - geo.colStarts[fileCol];
-                    const ch = charPos < entry.name.length ? entry.name[charPos] : ' ';
-                    return { ch, style };
-                }
-                return { ch: ' ', style: border };
-            }
-        }
-
-        return { ch: ' ', style: border };
+        return getCellAt(row, col, layout, {
+            theme: this.settings.theme,
+            activePane: this.activePane,
+            inactivePaneHidden: this.inactivePaneHidden,
+            quickViewMode: this.quickViewMode,
+            left: this.left,
+            right: this.right,
+            activePaneObj: this.activePaneObj,
+        });
     }
 
     private renderCmdCursor(layout: Layout): string {
-        const t = this.settings.theme;
-        const cursorCol = this.termBuffer.getCursorCol() + 1;
-        let out = moveTo(layout.cmdRow, cursorCol);
-        if (this.cmdCursorVisible) {
-            out += applyStyle(t.commandLine.idle) + '\u2582' + resetStyle();
-        } else {
-            const termRow = this.termBuffer.getCursorRow();
-            const content = this.termBuffer.getRow(termRow);
-            const charAtCursor = content[this.termBuffer.getCursorCol()] || ' ';
-            out += applyStyle(t.commandLine.idle) + charAtCursor + resetStyle();
-        }
-        out += hideCursor();
-        return out;
+        return this.commandLine.renderCursor(this.cmdContext(layout));
     }
 
     private renderCommandLine(layout: Layout): string {
-        const { cols } = this;
-        const { cmdRow } = layout;
-        const t = this.settings.theme;
-        const out: string[] = [];
-
-        if (this.waitingMode) {
-            const spinnerFrames = [
-                '\u28ff\u28f7', '\u28ff\u28ef', '\u28ff\u28df', '\u28ff\u287f', '\u28ff\u28bf', '\u287f\u28ff',
-                '\u28bf\u28ff', '\u28fb\u28ff', '\u28fd\u28ff', '\u28fe\u28ff', '\u28f7\u28ff', '\u28ff\u28fe',
-            ];
-            const spinner = spinnerFrames[this.spinnerFrame % spinnerFrames.length];
-            const display = (' ' + spinner + ' Running... ' + this.settings.toggleKey + ' for details').slice(0, cols);
-            out.push(applyStyle(t.commandLineBusy.idle));
-            out.push(moveTo(cmdRow, 1));
-            out.push(display);
-            if (display.length < cols) {
-                out.push(' '.repeat(cols - display.length));
-            }
-            out.push(resetStyle());
-            return out.join('');
-        }
-
-        const termRow = this.termBuffer.getCursorRow();
-        const content = this.termBuffer.getRow(termRow);
-        const display = content.slice(0, cols);
-
-        out.push(applyStyle(t.commandLine.idle));
-        out.push(moveTo(cmdRow, 1));
-        out.push(display);
-        if (display.length < cols) {
-            out.push(' '.repeat(cols - display.length));
-        }
-        out.push(resetStyle());
-
-        return out.join('');
+        return this.commandLine.render(this.cmdContext(layout));
     }
 
     private renderTerminalArea(layout: Layout): string {
-        const leftIsActive = this.activePane === 'left';
-        const geo = leftIsActive ? layout.rightPane : layout.leftPane;
-        return this.renderTerminalAreaAt(layout, geo);
+        return this.terminalArea.render(layout, this.activePane, this.termBuffer, this.settings.theme);
     }
 
     private renderTerminalAreaAt(layout: Layout, geo: PaneGeometry): string {
-        const out: string[] = [];
-        const t = this.settings.theme;
-        const termBg = bgRgb(t.commandLine.idle.bg);
-
-        const top = layout.topRow;
-        const bottom = layout.cmdRow - 1;
-        const areaHeight = bottom - top + 1;
-        const areaWidth = geo.width;
-        const bufStartCol = geo.startCol - 1;
-
-        for (let i = 0; i < areaHeight; i++) {
-            const termRow = top - 1 + i;
-            const screenRow = top + i;
-            out.push(moveTo(screenRow, geo.startCol));
-            out.push(termBg);
-            out.push(this.termBuffer.getStyledRowSlice(termRow, bufStartCol, areaWidth));
-        }
-        out.push(resetStyle());
-        return out.join('');
+        return this.terminalArea.renderAt(layout, geo, this.termBuffer, this.settings.theme);
     }
 
     private renderFKeyBar(layout: Layout): string {
-        const { cols } = this;
-        const { fkeyRow } = layout;
-        const t = this.settings.theme;
-        const out: string[] = [];
-
-        const actionSlots: { action: keyof KeyBindings; label: string }[] = [
-            { action: 'view', label: 'View' },
-            { action: 'edit', label: 'Edit' },
-            { action: 'copy', label: 'Copy' },
-            { action: 'move', label: 'Move' },
-            { action: 'mkdir', label: 'Mkdir' },
-            { action: 'delete', label: 'Del' },
-            { action: 'menu', label: 'Conf' },
-            { action: 'quit', label: 'Quit' },
-        ];
-        const defaultLabels: Record<number, string> = {
-            1: 'Help', 2: 'Menu', 9: 'Conf',
-        };
-        const keys: { num: string; label: string }[] = [];
-        for (let i = 1; i <= 10; i++) {
-            let label = '';
-            for (const al of actionSlots) {
-                if (getFKeyNumber(this.settings.keys[al.action]) === i) {
-                    label = al.label;
-                    break;
-                }
-            }
-            if (!label) {
-                label = defaultLabels[i] || '';
-            }
-            keys.push({ num: String(i), label });
-        }
-
-        out.push(moveTo(fkeyRow, 1) + resetStyle());
-
-        const totalKeys = keys.length;
-        const slotWidth = Math.floor(cols / totalKeys);
-        let col = 1;
-
-        for (let i = 0; i < totalKeys; i++) {
-            const k = keys[i];
-            const isLast = i === totalKeys - 1;
-            const w = isLast ? cols - col + 1 : slotWidth;
-
-            out.push(moveTo(fkeyRow, col));
-            out.push(applyStyle(t.fkeyNum.idle) + ' ' + k.num);
-            const remaining = Math.max(0, w - 1 - k.num.length);
-            const label = k.label.slice(0, remaining);
-            const pad = ' '.repeat(Math.max(0, remaining - label.length));
-            out.push(applyStyle(t.fkeyLabel.idle) + label + pad);
-
-            col += w;
-        }
-
-        return out.join('');
+        return this.fkeyBar.render(layout, this.cols, this.settings);
     }
 }

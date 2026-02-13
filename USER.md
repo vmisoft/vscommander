@@ -25,7 +25,7 @@ Each pane is an independent box with its own borders, info bar, and stats:
 ║        │              ║║        │                  ║
 ╟────────┴──────────────╢╟────────┴─────────────────╢  <- separators
 ║ package.json  1,234  2025-05-14 ║║ README.md  567  2025-06-01 ║  <- info bars
-╚══ Bytes: 45,678, files: 12, folders: 3 ╝╚══ Bytes: 1,234, files: 5, folders: 2 ╝  <- bottom borders
+╚══ Bytes: 45,678, files: 12, dirs: 3 ╝╚══ Bytes: 1,234, files: 5, dirs: 2 ╝  <- bottom borders
 $ ls -la                                                <- command line
  1Help 2Menu 3View 4Edit 5Copy 6Move 7Mkdir 8Del  9Conf 10Quit  <- function key bar
 ```
@@ -35,7 +35,7 @@ $ ls -la                                                <- command line
 - **File listing**: Files displayed in multiple columns (1, 2, or 3 per pane — configurable). Files flow top-to-bottom, then left-to-right (newspaper style). Directories shown in blue+bold, dotfiles in dim gray, regular files in aqua
 - **Separator**: Single-line horizontal separator between the file list and info bar, with junctions at inner column dividers
 - **Info bar**: Each pane shows its selected file's name, size (or `<DIR>` for directories), and modification date
-- **Bottom border**: Each pane shows its own summary stats (total bytes, file count, folder count)
+- **Bottom border**: Each pane shows its own summary stats (total bytes, file count, directory count)
 - **Command line**: Your shell prompt where you can type commands
 - **Function key bar**: F1-F10 labels at the very bottom (F10 quits VSCommander)
 
@@ -63,9 +63,9 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `F4` | Open selected file in VS Code editor |
 | `F5` | Copy selected file(s) to the other pane |
 | `F6` | Move or rename selected file(s) |
-| `F7` | Open Make Folder dialog |
-| `F8` | Delete selected file or folder (moves to Recycle Bin / Trash on Windows and macOS; permanently deletes on Linux and FreeBSD) |
-| `Shift+F8` | Permanently delete selected file or folder (bypasses Recycle Bin / Trash on all platforms) |
+| `F7` | Open Make Directory dialog |
+| `F8` | Delete selected file or directory (moves to Recycle Bin / Trash on Windows and macOS; permanently deletes on Linux and FreeBSD) |
+| `Shift+F8` | Permanently delete selected file or directory (bypasses Recycle Bin / Trash on all platforms) |
 | `F9` | Open top menu bar (Left / Files / Commands / Options / Right) |
 | `F10` | Quit VSCommander (with confirmation) |
 | `Ctrl+H` | Toggle dotfile (hidden file) visibility |
@@ -115,9 +115,9 @@ Press `Alt+F1` to open the Change Drive popup for the left pane, or `Alt+F2` for
 - **Windows**: Lists disk drives sorted alphabetically (C:, D:, etc.) with type (fixed, removable, network, cdrom), total size, and free space
 - **Linux / macOS / FreeBSD**: Lists mounted filesystems from `df`, filtering out virtual filesystems (tmpfs, proc, sysfs, etc.). The root filesystem `/` appears first, followed by `/mnt/*` mount points, then the rest alphabetically
 
-Below the drives, a **Home directories** section lists well-known folders from your home directory (Desktop, Documents, Downloads, Movies, Music, Pictures, Public) -- only those that actually exist. This section is refreshed each time the popup is opened.
+Below the drives, a **Home directories** section lists well-known directories from your home directory (Desktop, Documents, Downloads, Movies, Music, Pictures, Public) -- only those that actually exist. This section is refreshed each time the popup is opened.
 
-If you have a workspace folder open in VS Code, it appears at the bottom of the list as a "VSCode Explorer" entry (showing the folder name on the right) for quick navigation. The VSCode Explorer entry always has the hotkey `0`.
+If you have a workspace directory open in VS Code, it appears at the bottom of the list as a "VSCode Explorer" entry (showing the directory name on the right) for quick navigation. The VSCode Explorer entry always has the hotkey `0`.
 
 Navigation and selection:
 
@@ -151,14 +151,14 @@ Press `F6` to move or rename the selected file(s). Works the same as Copy but mo
 
 If the target path is the same directory with a different name, this acts as a rename.
 
-## Make Folder (F7)
+## Make Directory (F7)
 
-Press `F7` to open the Make Folder dialog. The dialog appears centered on the screen with the following fields:
+Press `F7` to open the Make Directory dialog. The dialog appears centered on the screen with the following fields:
 
-- **Folder name**: Type the name of the new folder to create in the active pane's current directory. Intermediate directories are created automatically (e.g. `a/b/c` creates all three levels).
+- **Directory name**: Type the name of the new directory to create in the active pane's current directory. Intermediate directories are created automatically (e.g. `a/b/c` creates all three levels).
 - **Link type**: Cycle through `none`, `symbolic`, and `junction` (Windows only) with Space or arrow keys. When set to `symbolic` or `junction`, a symbolic link or junction is created instead of a regular directory.
 - **Target**: When link type is not `none`, enter the target path for the link.
-- **Process multiple names**: Check this box (Space to toggle) to create multiple folders at once by separating names with semicolons (e.g. `src;lib;docs`).
+- **Process multiple names**: Check this box (Space to toggle) to create multiple directories at once by separating names with semicolons (e.g. `src;lib;docs`).
 
 Navigation within the dialog:
 
@@ -171,7 +171,7 @@ Navigation within the dialog:
 | `Escape` | Cancel and close |
 | Arrow keys | Navigate within input fields (Left/Right) or cycle dropdown options |
 
-After confirming, the folder is created and the cursor moves to the newly created entry. Both panes are refreshed to reflect the change.
+After confirming, the directory is created and the cursor moves to the newly created entry. Both panes are refreshed to reflect the change.
 
 ## Top Menu Bar (F9)
 
@@ -226,8 +226,8 @@ Active options show a checkmark. Column count and sort mode are per-pane.
 | Edit | F4 | Open file in VS Code editor |
 | Copy | F5 | Copy file (not yet implemented) |
 | Rename or move | F6 | Rename or move file (not yet implemented) |
-| Make folder | F7 | Open the Make Folder dialog |
-| Delete | F8 | Delete selected file or folder |
+| Make directory | F7 | Open the Make Directory dialog |
+| Delete | F8 | Delete selected file or directory |
 
 ### Commands Menu
 
@@ -267,7 +267,7 @@ The bottom row shows function key labels styled after Far Manager. Labels update
 | F4 | Edit | Opens selected file in VS Code editor |
 | F5 | Copy | Copies selected file(s) to the opposite pane with a target path dialog |
 | F6 | Move | Moves or renames selected file(s) with a target path dialog |
-| F7 | Mkdir | Opens the Make Folder dialog to create directories or symbolic links |
+| F7 | Mkdir | Opens the Make Directory dialog to create directories or symbolic links |
 | F8 | Del | Moves to Recycle Bin / Trash (Windows, macOS) or permanently deletes (Linux, FreeBSD) with confirmation |
 | F9 | Conf | Opens the top menu bar with Left, Files, Commands, Options, Right menus |
 | F10 | Quit | Quits VSCommander (with confirmation) |
@@ -290,7 +290,7 @@ By default, dotfiles (hidden files starting with `.`) are shown. They appear in 
 
 The bottom row of the panel (above the function key bar) shows a live view of your shell's current line. Keystrokes are forwarded to the shell in real time and the shell's output is rendered directly -- what you see is exactly what the shell produces, with no manual prompt tracking.
 
-Press Enter to execute a typed command. The panel automatically hides to show the full terminal output while the command runs, then reappears with refreshed directory listings once the command finishes. This lets you see the complete output of your commands and ensures the panel reflects any filesystem changes (created files, deleted folders, etc.). If you press `Ctrl+O` while a command is still running, the panel appears with the file listings as usual, but the command line row shows an animated spinner indicating the command is in progress. Press `Ctrl+O` again to dismiss the panel and return to the terminal. When the command finishes while the panel is showing, the command line returns to its normal shell prompt view. When the command line is empty, pressing Enter opens the selected directory as usual.
+Press Enter to execute a typed command. The panel automatically hides to show the full terminal output while the command runs, then reappears with refreshed directory listings once the command finishes. This lets you see the complete output of your commands and ensures the panel reflects any filesystem changes (created files, deleted directories, etc.). If you press `Ctrl+O` while a command is still running, the panel appears with the file listings as usual, but the command line row shows an animated spinner indicating the command is in progress. Press `Ctrl+O` again to dismiss the panel and return to the terminal. When the command finishes while the panel is showing, the command line returns to its normal shell prompt view. When the command line is empty, pressing Enter opens the selected directory as usual.
 
 ## Half-Panel Mode (Ctrl+P)
 
@@ -309,7 +309,7 @@ Press `Ctrl+P` to hide the inactive pane and show recent terminal output in its 
 Press `Ctrl+Q` to enter Quick View mode. The inactive pane disappears and the active pane expands to fill the terminal width, while a VS Code split editor opens on the opposite side to preview the file under the cursor.
 
 - As you move the cursor through the file list, the split editor updates to show the currently highlighted file
-- When the cursor is on a **directory**, the split editor shows directory information: folder name, number of sub-folders, number of files, and total size. A recursive scan runs asynchronously and updates the display when complete
+- When the cursor is on a **directory**, the split editor shows directory information: full path, number of sub-directories, number of files, and total size. An animated spinner shows during the recursive scan, which runs asynchronously and updates the display when complete
 - When the cursor is on `..`, the last preview stays visible
 - VS Code handles all file types: text, images, binary (hex view), etc.
 
@@ -377,7 +377,7 @@ Mouse tracking is enabled while the panel is visible and disabled when you switc
 | Click and drag in file area | Cursor follows the mouse as you drag |
 | Left-click on the F-key bar | Triggers the corresponding function key action |
 | Left-click on popup buttons | Activates the clicked button (Confirm, Cancel, OK, etc.) |
-| Left-click on popup controls | Focuses the clicked field (Make Folder dialog) |
+| Left-click on popup controls | Focuses the clicked field (Make Directory dialog) |
 | Drag popup by body area | Moves the popup around the screen |
 | Left-click outside a popup | Closes the popup |
 | Scroll wheel | Moves cursor up/down by 3 entries; scrolls the Drive popup list when open |

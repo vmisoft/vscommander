@@ -9,7 +9,7 @@ import { ButtonGroup } from './buttonGroup';
 import { FrameBuffer } from './frameBuffer';
 
 export interface MkdirResult {
-    folderName: string;
+    dirName: string;
     linkType: 'none' | 'symbolic' | 'junction';
     linkTarget: string;
     multipleNames: boolean;
@@ -251,7 +251,7 @@ export class MkdirPopup extends Popup {
 
     get result(): MkdirResult {
         return {
-            folderName: this.nameInput.buffer,
+            dirName: this.nameInput.buffer,
             linkType: this.linkTypeDropdown.selected.value as 'none' | 'symbolic' | 'junction',
             linkTarget: this.targetInput.buffer,
             multipleNames: this.multipleCheckbox.checked,
@@ -279,11 +279,11 @@ export class MkdirPopup extends Popup {
 
         const fb = new FrameBuffer(totalW, totalH);
         fb.fill(0, 0, totalW, totalH, ' ', bodyStyle);
-        fb.drawBox(boxRow, boxCol, w, DIALOG_HEIGHT, bodyStyle, DBOX, 'Make folder');
+        fb.drawBox(boxRow, boxCol, w, DIALOG_HEIGHT, bodyStyle, DBOX, 'Make directory');
 
         // Row 1: label
-        fb.write(boxRow + 1, boxCol + 1, ' Create the folder:' + ' '.repeat(Math.max(0, innerW - 19)), t.dialogLabel.idle);
-        fb.write(boxRow + 1, boxCol + 13, 'f', hotkeyStyle);
+        fb.write(boxRow + 1, boxCol + 1, ' Create the directory:' + ' '.repeat(Math.max(0, innerW - 21)), t.dialogLabel.idle);
+        fb.write(boxRow + 1, boxCol + 13, 'd', hotkeyStyle);
 
         // Row 2: name input
         fb.blit(boxRow + 2, boxCol + 2, this.nameInput.renderToBuffer(inputStyle, cursorStyle, this.focusIndex === 0));

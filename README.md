@@ -19,7 +19,7 @@ The project is a work in progress and not published to the marketplace yet.
 - **Real terminal underneath**: not a webview; the shell session persists when the panel is hidden
 - **Quick search**: press `Alt` + any letter to jump to matching files instantly
 - **Drive / mount popup**: `Alt+F1` / `Alt+F2` to switch drives (Windows) or mounted filesystems (Linux, macOS, FreeBSD)
-- **Quick View**: `Ctrl+Q` previews files in a VS Code split editor; shows directory info (folder/file counts, total size) for directories
+- **Quick View**: `Ctrl+Q` previews files in a VS Code split editor; shows directory info (sub-directory/file counts, total size) for directories
 - **Half-panel mode**: `Ctrl+P` hides one pane to show color-rich terminal output alongside your files; commands run inline without hiding the panel
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
 - **Top menu bar**: F9 opens a Far Manager-style menu with Left, Files, Commands, Options, Right menus for sorting, column layout, and all panel operations
@@ -75,8 +75,8 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `F4` | Edit -- open file in VS Code editor |
 | `F5` | Copy files to other pane |
 | `F6` | Move / rename files |
-| `F7` | Make folder -- create directories or symbolic links |
-| `F8` | Delete selected file or folder |
+| `F7` | Make directory -- create directories or symbolic links |
+| `F8` | Delete selected file or directory |
 | `F9` | Open top menu bar (Left / Files / Commands / Options / Right) |
 | `F10` | Close panel and return to shell |
 | `Alt+Enter` | Detach to fullscreen / reattach |

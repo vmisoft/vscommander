@@ -27,13 +27,43 @@ Press F5 in VS Code to launch the Extension Development Host. Run "VSCommander: 
 
 ```
 src/
-  extension.ts   Entry point — Pseudoterminal wiring, command registration, shell ↔ panel routing. **IMPORTANT** This file should be kept as small as possible, the logic should be split accross components.
-  shell.ts       node-pty shell proxy — spawn, resize, data forwarding, kill
-  panel.ts       Panel state, directory reading, rendering, keyboard input handling. **IMPORTANT** This file should be kept as small as possible, the logic should be split accross components.
-  draw.ts        Low-level ANSI escape sequence primitives (cursor, box, color, alt screen)
+  extension.ts      Orchestrator — Pseudoterminal, command registration, VS Code API. Delegates to components below.
+  shell.ts          node-pty shell proxy — spawn, resize, data forwarding, kill
+  panel.ts          Panel coordinator — layout, popup routing, pane navigation, render dispatch
+  draw.ts           Low-level ANSI escape sequence primitives (cursor, box, color, alt screen)
+  timerManager.ts   Generic BlinkTimer + PollTimer — replaces all timer patterns
+  fileOps.ts        File system operations (mkdir, copy, move, recursive copy) — no vscode
+  shellRouter.ts    Shell input tracking, cd suppression, output buffer — no vscode
+  quickView.ts      Quick view state machine + QuickViewHost interface — no vscode
+  commandLine.ts    Command line row: render, cursor blink, spinner, shell input
+  fkeyBar.ts        Function key bar: render, mouse hit-test
+  terminalArea.ts   Terminal buffer rendering in hidden-pane area
+  cellQuery.ts      Cell-at-coordinate query for popup shadows — pure function
+  pane.ts           Single file-list pane: entries, cursor, selection, rendering
+  *Popup.ts         Popup dialogs (search, drive, confirm, mkdir, copyMove, menu)
 ```
 
 Data flow: VS Code terminal ↔ Pseudoterminal (extension.ts) ↔ shell.ts (normal mode) OR panel.ts (panel mode). Toggle switches between alt screen buffer (panel) and main buffer (shell).
+
+Dependency tree:
+```
+extension.ts (orchestrator)
+  ├── timerManager.ts
+  ├── fileOps.ts
+  ├── shellRouter.ts
+  ├── quickView.ts
+  ├── directoryInfo.ts
+  ├── shell.ts
+  └── panel.ts (coordinator)
+        ├── commandLine.ts
+        ├── fkeyBar.ts
+        ├── terminalArea.ts
+        ├── cellQuery.ts
+        ├── pane.ts
+        └── *Popup.ts
+```
+
+No new file imports vscode (except extension.ts and directoryInfo.ts which already do).
 
 ## Conventions
 
@@ -62,8 +92,9 @@ This extension must work on **Linux, FreeBSD, macOS, and Windows**. Every change
 - Functions that produce ANSI output return `string` — the caller writes to the emitter
 - Panel state is mutated in place, render functions read from it
 - Keep `draw.ts` as pure ANSI primitives with no business logic
-- Keep `panel.ts` with no knowledge of VS Code APIs
+- Keep `panel.ts` and all files it depends on with no knowledge of VS Code APIs
 - Keep `shell.ts` with no knowledge of VS Code APIs
+- Only `extension.ts` and `directoryInfo.ts` may import `vscode`
 
 ### Terminal Rendering
 
@@ -92,8 +123,12 @@ This extension must work on **Linux, FreeBSD, macOS, and Windows**. Every change
 ### Adding New Features
 
 1. Drawing primitives go in `draw.ts`
-2. Panel logic (navigation, rendering, input) goes in `panel.ts`
-3. Shell/PTY concerns go in `shell.ts`
-4. VS Code API integration goes in `extension.ts`
-5. Test on multiple platforms or at minimum verify no platform-specific APIs are used without guards
-6. Update `USER.md` with any user-visible changes
+2. Panel visual components go in their own files (`commandLine.ts`, `fkeyBar.ts`, `terminalArea.ts`, `cellQuery.ts`)
+3. Panel coordination (navigation, popup routing) goes in `panel.ts`
+4. File system operations go in `fileOps.ts`
+5. Shell/PTY concerns go in `shell.ts` or `shellRouter.ts`
+6. Timer patterns use `BlinkTimer`/`PollTimer` from `timerManager.ts`
+7. VS Code API integration goes in `extension.ts`
+8. New files must not import vscode — only `extension.ts` and `directoryInfo.ts` may
+9. Test on multiple platforms or at minimum verify no platform-specific APIs are used without guards
+10. Update `USER.md` with any user-visible changes

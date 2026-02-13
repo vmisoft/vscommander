@@ -69,11 +69,17 @@ export class SearchPopup extends Popup {
             return { action: 'consumed' };
         }
 
+        let ch = '';
         if (data.length === 1 && data.charCodeAt(0) >= 0x20) {
-            const candidate = this.input.buffer + data;
+            ch = data;
+        } else if (data.length === 2 && data.charCodeAt(0) === 0x1b && data.charCodeAt(1) >= 0x20) {
+            ch = data[1];
+        }
+        if (ch) {
+            const candidate = this.input.buffer + ch;
             const matchIdx = SearchPopup.findPrefixMatch(entries, candidate);
             if (matchIdx >= 0) {
-                this.input.insert(data);
+                this.input.insert(ch);
                 this.lastMatchIndex = matchIdx;
                 return { action: 'consumed' };
             }

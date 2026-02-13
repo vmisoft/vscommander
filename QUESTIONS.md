@@ -63,19 +63,19 @@ Far Manager has 10 view modes (Ctrl+0 through Ctrl+9):
 From Far Manager's Commands menu:
 - Find File (Alt+F7): Full recursive search with pattern matching
 - History (Alt+F8): Command line history popup
-- Find Folder (Alt+F10): Browse folder tree
+- Find Directory (Alt+F10): Browse directory tree
 - File View History (Alt+F11): Recently viewed files
-- Folders History (Alt+F12): Recently visited folders
+- Directory History (Alt+F12): Recently visited directories
 - Swap Panels (Ctrl+U): Already implemented
-- Compare Folders: Highlight different files between panes
-- Folder Shortcuts: Ctrl+0..9 quick-save/load folder paths
+- Compare Directories: Highlight different files between panes
+- Directory Shortcuts: Ctrl+0..9 quick-save/load directory paths
 - Filter (Ctrl+I): File panel filter
 
 **Decision**: Implement in priority order:
-1. Folder History (Alt+F12) - track visited directories, show popup
-2. Compare Folders - highlight differences between panes
+1. Directory History (Alt+F12) - track visited directories, show popup
+2. Compare Directories - highlight differences between panes
 3. Find File (Alt+F7) - delegate to VS Code search or implement basic glob
-4. Folder Shortcuts (Ctrl+0..9) - save/load folder paths
+4. Directory Shortcuts (Ctrl+0..9) - save/load directory paths
 
 ## Options Menu -- ANSWERED
 

@@ -221,7 +221,7 @@ export interface PanelSettings {
     sortDirsFirst: boolean;
     panelColumns: number;
     theme: Theme;
-    workspaceFolders: string[];
+    workspaceDirs: string[];
     toggleKey: string;
     keys: KeyBindings;
 }
@@ -232,7 +232,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     sortDirsFirst: true,
     panelColumns: 2,
     theme: DEFAULT_THEME,
-    workspaceFolders: [],
+    workspaceDirs: [],
     toggleKey: 'Ctrl+O',
     keys: DEFAULT_KEY_BINDINGS,
 };

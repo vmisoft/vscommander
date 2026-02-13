@@ -31,7 +31,7 @@ export class DrivePopup extends Popup {
 
     open(target?: 'left' | 'right', settings?: PanelSettings): void {
         if (!target || !settings) return;
-        const entries = DrivePopup.buildEntries(settings.workspaceFolders);
+        const entries = DrivePopup.buildEntries(settings.workspaceDirs);
         if (entries.length === 0) return;
         super.open();
         this.targetPane = target;
@@ -262,25 +262,25 @@ export class DrivePopup extends Popup {
         return fb.toAnsi(this.screenRow, this.screenCol);
     }
 
-    static buildEntries(workspaceFolders: string[]): DriveEntry[] {
+    static buildEntries(workspaceDirs: string[]): DriveEntry[] {
         const entries = DrivePopup.discoverDrives();
         const homeDirs = DrivePopup.discoverHomeDirs();
         for (const hd of homeDirs) entries.push(hd);
-        if (workspaceFolders.length > 0) {
-            for (const folder of workspaceFolders) {
+        if (workspaceDirs.length > 0) {
+            for (const dir of workspaceDirs) {
                 entries.push({
                     label: 'VSCode Explorer',
-                    description: path.basename(folder),
+                    description: path.basename(dir),
                     totalSize: 0,
                     freeSpace: 0,
-                    path: folder,
+                    path: dir,
                     group: 'workspace',
                 });
             }
         } else {
             entries.push({
                 label: 'VSCode Explorer',
-                description: 'no folder',
+                description: 'no directory',
                 totalSize: 0,
                 freeSpace: 0,
                 path: '',

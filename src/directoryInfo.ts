@@ -3,13 +3,38 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { formatSizeComma, formatSizeHuman } from './helpers';
 
+const SPINNER_FRAMES = [
+    '\u28ff\u28f7', '\u28ff\u28ef', '\u28ff\u28df', '\u28ff\u287f', '\u28ff\u28bf', '\u287f\u28ff',
+    '\u28bf\u28ff', '\u28fb\u28ff', '\u28fd\u28ff', '\u28fe\u28ff', '\u28f7\u28ff', '\u28ff\u28fe',
+];
+
 export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider {
     private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
     onDidChange = this._onDidChange.event;
 
     private content = '';
     private scanAbort: AbortController | undefined;
-    private currentPath = '';
+    private spinnerTimer: ReturnType<typeof setInterval> | undefined;
+    private spinnerFrame = 0;
+    private scanning = false;
+    private scanDirName = '';
+    private scanDirs = 0;
+    private scanFiles = 0;
+    private scanSize = 0;
+
+    private labelRanges: vscode.Range[] = [];
+    private valueRanges: vscode.Range[] = [];
+    private labelDecoration: vscode.TextEditorDecorationType;
+    private valueDecoration: vscode.TextEditorDecorationType;
+
+    constructor() {
+        this.labelDecoration = vscode.window.createTextEditorDecorationType({
+            color: new vscode.ThemeColor('descriptionForeground'),
+        });
+        this.valueDecoration = vscode.window.createTextEditorDecorationType({
+            color: new vscode.ThemeColor('textLink.activeForeground'),
+        });
+    }
 
     provideTextDocumentContent(_uri: vscode.Uri): string {
         return this.content;
@@ -19,102 +44,139 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
         if (this.scanAbort) {
             this.scanAbort.abort();
         }
+        this.stopSpinner();
 
-        this.currentPath = dirPath;
-        const dirName = path.basename(dirPath);
-        this.content = this.formatContent(dirName, 0, 0, 0, true);
-        this.fireChange();
+        this.scanDirName = dirPath;
+        this.scanDirs = 0;
+        this.scanFiles = 0;
+        this.scanSize = 0;
+        this.scanning = true;
+        this.spinnerFrame = 0;
+        this.rebuildContent();
+        this.startSpinner();
 
         const abort = new AbortController();
         this.scanAbort = abort;
 
-        let folders = 0;
-        let files = 0;
-        let totalSize = 0;
-
         try {
-            await this.scanDir(dirPath, abort.signal, (f, fi, s) => {
-                folders = f;
-                files = fi;
-                totalSize = s;
-            });
+            await this.scanDir(dirPath, abort.signal);
         } catch {
             if (abort.signal.aborted) return;
         }
 
         if (abort.signal.aborted) return;
 
-        this.content = this.formatContent(dirName, folders, files, totalSize, false);
-        this.fireChange();
+        this.scanning = false;
+        this.stopSpinner();
+        this.rebuildContent();
         this.scanAbort = undefined;
     }
 
-    private async scanDir(
-        dirPath: string,
-        signal: AbortSignal,
-        report: (folders: number, files: number, size: number) => void,
-    ): Promise<{ folders: number; files: number; size: number }> {
-        let folders = 0;
-        let files = 0;
-        let size = 0;
-
+    private async scanDir(dirPath: string, signal: AbortSignal): Promise<void> {
         let entries: fs.Dirent[];
         try {
             entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
         } catch {
-            return { folders, files, size };
+            return;
         }
 
         for (const entry of entries) {
-            if (signal.aborted) return { folders, files, size };
+            if (signal.aborted) return;
 
             const fullPath = path.join(dirPath, entry.name);
             if (entry.isDirectory()) {
-                folders++;
-                const sub = await this.scanDir(fullPath, signal, () => {});
-                folders += sub.folders;
-                files += sub.files;
-                size += sub.size;
-                report(folders, files, size);
+                this.scanDirs++;
+                await this.scanDir(fullPath, signal);
             } else {
-                files++;
+                this.scanFiles++;
                 try {
                     const stat = await fs.promises.stat(fullPath);
-                    size += stat.size;
+                    this.scanSize += stat.size;
                 } catch {
                     // skip files we can't stat
                 }
-                report(folders, files, size);
             }
         }
-
-        return { folders, files, size };
     }
 
-    private formatContent(dirName: string, folders: number, files: number, totalSize: number, scanning: boolean): string {
+    private startSpinner(): void {
+        this.spinnerTimer = setInterval(() => {
+            if (this.scanning) {
+                this.spinnerFrame++;
+                this.rebuildContent();
+            }
+        }, 150);
+    }
+
+    private stopSpinner(): void {
+        if (this.spinnerTimer) {
+            clearInterval(this.spinnerTimer);
+            this.spinnerTimer = undefined;
+        }
+    }
+
+    private rebuildContent(): void {
+        this.labelRanges = [];
+        this.valueRanges = [];
+
         const lines: string[] = [];
         lines.push('');
-        lines.push('    Folder "' + dirName + '"');
+
+        const titleLabel = '    Directory ';
+        const titlePath = this.scanDirName;
+        lines.push(titleLabel + titlePath);
+        this.labelRanges.push(new vscode.Range(1, 4, 1, titleLabel.length));
+        this.valueRanges.push(new vscode.Range(1, titleLabel.length, 1, titleLabel.length + titlePath.length));
+
         lines.push('');
 
-        const labelWidth = 16;
-        const foldersStr = formatSizeComma(folders);
-        const filesStr = formatSizeComma(files);
-        const sizeStr = totalSize > 0
-            ? formatSizeComma(totalSize) + ' (' + formatSizeHuman(totalSize) + ')'
-            : '0';
+        const labelWidth = 20;
 
-        lines.push('    Folders:'.padEnd(labelWidth) + foldersStr);
-        lines.push('    Files:'.padEnd(labelWidth) + filesStr);
-        lines.push('    Files size:'.padEnd(labelWidth) + sizeStr);
+        const dirsValue = formatSizeComma(this.scanDirs);
+        lines.push('    Directories:'.padEnd(labelWidth) + dirsValue);
+        let ln = lines.length - 1;
+        this.labelRanges.push(new vscode.Range(ln, 4, ln, 4 + 'Directories:'.length));
+        this.valueRanges.push(new vscode.Range(ln, labelWidth, ln, labelWidth + dirsValue.length));
 
-        if (scanning) {
+        const filesValue = formatSizeComma(this.scanFiles);
+        lines.push('    Files:'.padEnd(labelWidth) + filesValue);
+        ln = lines.length - 1;
+        this.labelRanges.push(new vscode.Range(ln, 4, ln, 4 + 'Files:'.length));
+        this.valueRanges.push(new vscode.Range(ln, labelWidth, ln, labelWidth + filesValue.length));
+
+        let sizeValue: string;
+        if (this.scanSize > 0) {
+            sizeValue = formatSizeHuman(this.scanSize) + ' (' + formatSizeComma(this.scanSize) + ' bytes)';
+        } else {
+            sizeValue = '0';
+        }
+        lines.push('    Files size:'.padEnd(labelWidth) + sizeValue);
+        ln = lines.length - 1;
+        this.labelRanges.push(new vscode.Range(ln, 4, ln, 4 + 'Files size:'.length));
+        this.valueRanges.push(new vscode.Range(ln, labelWidth, ln, labelWidth + sizeValue.length));
+
+        if (this.scanning) {
             lines.push('');
-            lines.push('    Scanning...');
+            const spinner = SPINNER_FRAMES[this.spinnerFrame % SPINNER_FRAMES.length];
+            const scanLine = '    ' + spinner + ' Scanning...';
+            lines.push(scanLine);
         }
 
         lines.push('');
-        return lines.join('\n');
+        this.content = lines.join('\n');
+        this.fireChange();
+        setTimeout(() => this.applyDecorations(), 50);
+    }
+
+    private applyDecorations(): void {
+        const uriStr = 'vscommander-dirinfo:directory-info';
+        for (const editor of vscode.window.visibleTextEditors) {
+            if (editor.document.uri.toString() === uriStr) {
+                editor.setDecorations(this.labelDecoration, this.labelRanges);
+                editor.setDecorations(this.valueDecoration, this.valueRanges);
+                break;
+            }
+        }
     }
 
     private fireChange(): void {
@@ -127,5 +189,13 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
             this.scanAbort.abort();
             this.scanAbort = undefined;
         }
+        this.stopSpinner();
+    }
+
+    dispose(): void {
+        this.cancel();
+        this.labelDecoration.dispose();
+        this.valueDecoration.dispose();
+        this._onDidChange.dispose();
     }
 }

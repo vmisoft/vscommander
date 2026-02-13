@@ -113,7 +113,7 @@ export class MenuPopup extends Popup {
             { type: 'item', label: 'Edit', shortcut: 'F4', command: 'edit' },
             { type: 'item', label: 'Copy', shortcut: 'F5', command: 'copy' },
             { type: 'item', label: 'Rename or move', shortcut: 'F6', command: 'move' },
-            { type: 'item', label: 'Make folder', shortcut: 'F7', command: 'mkdir' },
+            { type: 'item', label: 'Make directory', shortcut: 'F7', command: 'mkdir' },
             { type: 'item', label: 'Delete', shortcut: 'F8', command: 'delete' },
         ];
     }

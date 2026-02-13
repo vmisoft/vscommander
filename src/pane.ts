@@ -353,7 +353,7 @@ export class Pane {
         } else {
             statsText = ' Bytes: ' + formatSizeComma(stats.totalBytes)
                 + ', files: ' + stats.fileCount
-                + ', folders: ' + stats.dirCount + ' ';
+                + ', dirs: ' + stats.dirCount + ' ';
         }
 
         const innerWidth = geo.width - 2;

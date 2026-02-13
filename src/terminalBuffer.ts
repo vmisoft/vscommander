@@ -1,5 +1,7 @@
 export class TerminalBuffer {
     private grid: string[][];
+    private styleGrid: string[][];
+    private currentStyle = '';
     private curRow = 0;
     private curCol = 0;
     private rows: number;
@@ -16,8 +18,10 @@ export class TerminalBuffer {
         this.cols = cols;
         this.scrollBottom = rows - 1;
         this.grid = [];
+        this.styleGrid = [];
         for (let r = 0; r < rows; r++) {
             this.grid.push(new Array(cols).fill(' '));
+            this.styleGrid.push(new Array(cols).fill(''));
         }
     }
 
@@ -46,6 +50,7 @@ export class TerminalBuffer {
                             this.lineFeed();
                         }
                         this.grid[this.curRow][this.curCol] = ch;
+                        this.styleGrid[this.curRow][this.curCol] = this.currentStyle;
                         this.curCol++;
                     }
                     break;
@@ -196,8 +201,10 @@ export class TerminalBuffer {
                 for (let j = 0; j < n; j++) {
                     if (this.scrollBottom < this.grid.length) {
                         this.grid.splice(this.scrollBottom, 1);
+                        this.styleGrid.splice(this.scrollBottom, 1);
                     }
                     this.grid.splice(this.curRow, 0, new Array(this.cols).fill(' '));
+                    this.styleGrid.splice(this.curRow, 0, new Array(this.cols).fill(''));
                 }
                 break;
             }
@@ -206,29 +213,38 @@ export class TerminalBuffer {
                 for (let j = 0; j < n; j++) {
                     this.grid.splice(this.curRow, 1);
                     this.grid.splice(this.scrollBottom, 0, new Array(this.cols).fill(' '));
+                    this.styleGrid.splice(this.curRow, 1);
+                    this.styleGrid.splice(this.scrollBottom, 0, new Array(this.cols).fill(''));
                 }
                 break;
             }
             case 'P': {
                 const n = Math.max(1, p0);
                 const row = this.grid[this.curRow];
+                const srow = this.styleGrid[this.curRow];
                 row.splice(this.curCol, n);
+                srow.splice(this.curCol, n);
                 while (row.length < this.cols) row.push(' ');
+                while (srow.length < this.cols) srow.push('');
                 break;
             }
             case '@': {
                 const n = Math.max(1, p0);
                 const row = this.grid[this.curRow];
+                const srow = this.styleGrid[this.curRow];
                 for (let j = 0; j < n; j++) {
                     row.splice(this.curCol, 0, ' ');
+                    srow.splice(this.curCol, 0, '');
                 }
                 row.length = this.cols;
+                srow.length = this.cols;
                 break;
             }
             case 'X': {
                 const n = Math.max(1, p0);
                 for (let j = 0; j < n && this.curCol + j < this.cols; j++) {
                     this.grid[this.curRow][this.curCol + j] = ' ';
+                    this.styleGrid[this.curRow][this.curCol + j] = '';
                 }
                 break;
             }
@@ -242,7 +258,16 @@ export class TerminalBuffer {
                 for (let j = 0; j < n; j++) this.scrollDown();
                 break;
             }
-            // m (SGR), h, l, n, s, u, t and others: ignore
+            case 'm': {
+                const raw = '\x1b[' + this.csiBuffer + 'm';
+                if (this.csiBuffer === '' || this.csiBuffer === '0') {
+                    this.currentStyle = '';
+                } else {
+                    this.currentStyle += raw;
+                }
+                break;
+            }
+            // h, l, n, s, u, t and others: ignore
         }
     }
 
@@ -257,11 +282,15 @@ export class TerminalBuffer {
     private scrollUp(): void {
         this.grid.splice(this.scrollTop, 1);
         this.grid.splice(this.scrollBottom, 0, new Array(this.cols).fill(' '));
+        this.styleGrid.splice(this.scrollTop, 1);
+        this.styleGrid.splice(this.scrollBottom, 0, new Array(this.cols).fill(''));
     }
 
     private scrollDown(): void {
         this.grid.splice(this.scrollBottom, 1);
         this.grid.splice(this.scrollTop, 0, new Array(this.cols).fill(' '));
+        this.styleGrid.splice(this.scrollBottom, 1);
+        this.styleGrid.splice(this.scrollTop, 0, new Array(this.cols).fill(''));
     }
 
     private clearRange(r1: number, c1: number, r2: number, c2: number): void {
@@ -270,6 +299,7 @@ export class TerminalBuffer {
             const endC = r === r2 ? c2 : this.cols - 1;
             for (let c = startC; c <= endC && c < this.cols; c++) {
                 this.grid[r][c] = ' ';
+                this.styleGrid[r][c] = '';
             }
         }
     }
@@ -277,6 +307,7 @@ export class TerminalBuffer {
     private clearAll(): void {
         for (let r = 0; r < this.rows; r++) {
             this.grid[r].fill(' ');
+            this.styleGrid[r].fill('');
         }
         this.curRow = 0;
         this.curCol = 0;
@@ -284,6 +315,7 @@ export class TerminalBuffer {
 
     private reset(): void {
         this.clearAll();
+        this.currentStyle = '';
         this.scrollTop = 0;
         this.scrollBottom = this.rows - 1;
         this.savedCurRow = 0;
@@ -295,6 +327,45 @@ export class TerminalBuffer {
         return this.grid[n].join('');
     }
 
+    getStyledRow(n: number): string {
+        if (n < 0 || n >= this.rows) return '';
+        const chars = this.grid[n];
+        const styles = this.styleGrid[n];
+        let out = '\x1b[0m';
+        let lastStyle = '';
+        for (let i = 0; i < this.cols; i++) {
+            if (styles[i] !== lastStyle) {
+                out += '\x1b[0m' + styles[i];
+                lastStyle = styles[i];
+            }
+            out += chars[i];
+        }
+        out += '\x1b[0m';
+        return out;
+    }
+
+    getStyledRowSlice(n: number, start: number, len: number): string {
+        if (n < 0 || n >= this.rows) return ' '.repeat(len);
+        const chars = this.grid[n];
+        const styles = this.styleGrid[n];
+        let out = '\x1b[0m';
+        let lastStyle = '';
+        const end = Math.min(start + len, this.cols);
+        for (let i = start; i < end; i++) {
+            if (styles[i] !== lastStyle) {
+                out += '\x1b[0m' + styles[i];
+                lastStyle = styles[i];
+            }
+            out += chars[i];
+        }
+        out += '\x1b[0m';
+        const produced = end - start;
+        if (produced < len) {
+            out += ' '.repeat(len - produced);
+        }
+        return out;
+    }
+
     getCursorRow(): number { return this.curRow; }
     getCursorCol(): number { return this.curCol; }
     getRowCount(): number { return this.rows; }
@@ -302,16 +373,22 @@ export class TerminalBuffer {
 
     resize(cols: number, rows: number): void {
         const newGrid: string[][] = [];
+        const newStyleGrid: string[][] = [];
         for (let r = 0; r < rows; r++) {
             if (r < this.rows && this.grid[r]) {
                 const row = this.grid[r].slice(0, cols);
                 while (row.length < cols) row.push(' ');
                 newGrid.push(row);
+                const srow = this.styleGrid[r].slice(0, cols);
+                while (srow.length < cols) srow.push('');
+                newStyleGrid.push(srow);
             } else {
                 newGrid.push(new Array(cols).fill(' '));
+                newStyleGrid.push(new Array(cols).fill(''));
             }
         }
         this.grid = newGrid;
+        this.styleGrid = newStyleGrid;
         this.rows = rows;
         this.cols = cols;
         if (this.scrollBottom >= rows) this.scrollBottom = rows - 1;

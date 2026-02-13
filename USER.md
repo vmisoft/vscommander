@@ -70,6 +70,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `F10` | Quit VSCommander (with confirmation) |
 | `Ctrl+H` | Toggle dotfile (hidden file) visibility |
 | `Ctrl+P` | Toggle visibility of inactive pane (shows terminal beneath) |
+| `Ctrl+Q` | Quick View -- preview file under cursor in a VS Code split editor |
 | `Ctrl+R` | Re-read the active pane's directory |
 | `Ctrl+U` | Swap left and right pane directories |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Set active pane to 1, 2, or 3 columns |
@@ -295,10 +296,33 @@ Press Enter to execute a typed command. The panel automatically hides to show th
 
 Press `Ctrl+P` to hide the inactive pane and show recent terminal output in its place. This lets you see command output while keeping one file pane visible.
 
-- The active pane stays in place; the inactive side shows a "Terminal" view with recent shell output
+- The active pane stays in place; the inactive side shows terminal output with full color support (colored `ls`, syntax-highlighted output, etc.)
+- The terminal area is borderless and fills the entire pane space for maximum visibility
 - Press `Ctrl+P` again to restore both panes
 - Pressing `Tab` to switch panes also swaps which side shows the terminal
 - Use `Ctrl+O` to hide both panes and see the full terminal as before
+- When you execute a command (type + Enter) in half-panel mode, the panel stays visible -- the terminal area shows command output live, and both file panes refresh when the command finishes
+- The `cd` commands triggered by pane navigation are suppressed from the terminal area, keeping the output clean
+
+## Quick View (Ctrl+Q)
+
+Press `Ctrl+Q` to enter Quick View mode. The inactive pane disappears and the active pane expands to fill the terminal width, while a VS Code split editor opens on the opposite side to preview the file under the cursor.
+
+- As you move the cursor through the file list, the split editor updates to show the currently highlighted file
+- When the cursor is on a **directory**, the split editor shows directory information: folder name, number of sub-folders, number of files, and total size. A recursive scan runs asynchronously and updates the display when complete
+- When the cursor is on `..`, the last preview stays visible
+- VS Code handles all file types: text, images, binary (hex view), etc.
+
+Exiting Quick View:
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+Q` | Toggle Quick View off -- restores both panes, closes split editor |
+| `Tab` | Exit Quick View, switch to the other pane, close split editor |
+| `Ctrl+O` | Exit Quick View, hide the panel entirely, close split editor |
+| `Enter` | On a file: exit Quick View, close split, open file normally |
+
+While in Quick View mode, `Ctrl+P` (toggle pane), `Ctrl+Left`, and `Ctrl+Right` (resize) are disabled. `Ctrl+U` (swap panels) exits Quick View first, then swaps.
 
 ## Fullscreen / Detach
 
@@ -338,6 +362,7 @@ Every panel action can be remapped to a different key. Valid key names include `
 | `vscommander.keyDetach` | string | `Alt+Enter` | Detach/attach fullscreen window |
 | `vscommander.keyResizeLeft` | string | `Ctrl+Left` | Move pane border left |
 | `vscommander.keyResizeRight` | string | `Ctrl+Right` | Move pane border right |
+| `vscommander.keyQuickView` | string | `Ctrl+Q` | Quick View (preview file in split editor) |
 
 When an action is bound to an F-key (F1-F10), its label appears in the function key bar at the corresponding position.
 

@@ -32,6 +32,8 @@ export type PanelInputResult =
     | { action: 'deleteFile'; filePath: string; toTrash: boolean }
     | { action: 'mkdir'; cwd: string; folderName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean }
     | { action: 'copyMove'; result: CopyMoveResult }
+    | { action: 'quickView'; data: string; filePath: string; targetType: 'file' | 'dir' | 'none'; side: 'left' | 'right' }
+    | { action: 'quickViewClose'; data: string; chdir?: string }
     | { action: 'none' };
 
 export class Panel {
@@ -51,6 +53,7 @@ export class Panel {
     copyMovePopup: CopyMovePopup;
     termBuffer: TerminalBuffer;
     inactivePaneHidden = false;
+    quickViewMode = false;
     cmdCursorVisible = true;
     splitOffset = 0;
     waitingMode = false;
@@ -85,6 +88,7 @@ export class Panel {
     hide(): string {
         this.visible = false;
         this.waitingMode = false;
+        this.quickViewMode = false;
         return disableMouse() + showCursor() + leaveAltScreen();
     }
 
@@ -120,6 +124,10 @@ export class Panel {
     }
 
     private getLayout(): Layout {
+        if (this.quickViewMode) {
+            const pane = this.activePaneObj;
+            return computeLayout(this.rows, this.cols, this.settings.panelColumns, this.cols, pane.colCount, pane.colCount);
+        }
         return computeLayout(this.rows, this.cols, this.settings.panelColumns, this.leftWidth, this.left.colCount, this.right.colCount);
     }
 
@@ -143,6 +151,14 @@ export class Panel {
         return this.activePane === 'left' ? this.left : this.right;
     }
 
+    getQuickViewTarget(): { type: 'file' | 'dir' | 'none'; path: string } {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        if (!entry || entry.name === '..') return { type: 'none', path: '' };
+        const fullPath = path.join(pane.cwd, entry.name);
+        return { type: entry.isDir ? 'dir' : 'file', path: fullPath };
+    }
+
     get isSearchActive(): boolean {
         return this.searchPopup.active;
     }
@@ -163,7 +179,7 @@ export class Panel {
     }
 
     renderClockUpdate(): string {
-        if (!this.visible || !this.settings.clockEnabled || this.hasActivePopup) return '';
+        if (!this.visible || !this.settings.clockEnabled || this.hasActivePopup || this.quickViewMode) return '';
         const layout = this.getLayout();
         const t = this.settings.theme;
         const leftIsActive = this.activePane === 'left';
@@ -204,7 +220,9 @@ export class Panel {
     renderSearchCursorBlink(): string {
         if (!this.visible || !this.searchPopup.active) return '';
         const layout = this.getLayout();
-        const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
+        const activePaneGeo = this.quickViewMode
+            ? layout.leftPane
+            : (this.activePane === 'left' ? layout.leftPane : layout.rightPane);
         return this.searchPopup.renderBlink(layout.bottomRow, activePaneGeo.startCol, this.settings.theme);
     }
 
@@ -212,10 +230,10 @@ export class Panel {
         if (!this.visible || this.waitingMode || this.hasActivePopup) return '';
         const layout = this.getLayout();
         const out: string[] = [];
-        out.push(this.renderCommandLine(layout));
         if (this.inactivePaneHidden) {
             out.push(this.renderTerminalArea(layout));
         }
+        out.push(this.renderCommandLine(layout));
         out.push(this.renderCmdCursor(layout));
         return out.join('');
     }
@@ -226,7 +244,9 @@ export class Panel {
         const pane = this.activePaneObj;
         const layout = this.getLayout();
         const listHeight = layout.listHeight;
-        const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
+        const activePaneGeo = this.quickViewMode
+            ? layout.leftPane
+            : (this.activePane === 'left' ? layout.leftPane : layout.rightPane);
         const pageCapacity = listHeight * activePaneGeo.numCols;
 
         if (data.startsWith('\x1b[M')) {
@@ -368,6 +388,31 @@ export class Panel {
             return { action: 'settingsChanged' };
         }
 
+        if (matchesKeyBinding(data, this.settings.keys.quickView)) {
+            if (this.quickViewMode) {
+                this.quickViewMode = false;
+                return { action: 'quickViewClose', data: this.render() };
+            } else {
+                this.quickViewMode = true;
+                this.inactivePaneHidden = false;
+                const side: 'left' | 'right' = this.activePane === 'left' ? 'right' : 'left';
+                const target = this.getQuickViewTarget();
+                return { action: 'quickView', data: this.render(), filePath: target.path, targetType: target.type, side };
+            }
+        }
+
+        if (this.quickViewMode) {
+            if (matchesKeyBinding(data, this.settings.keys.togglePane)) {
+                this.quickViewMode = false;
+                this.inactivePaneHidden = !this.inactivePaneHidden;
+                return { action: 'quickViewClose', data: this.render() };
+            }
+            if (matchesKeyBinding(data, this.settings.keys.resizeLeft)
+                || matchesKeyBinding(data, this.settings.keys.resizeRight)) {
+                return { action: 'none' };
+            }
+        }
+
         if (matchesKeyBinding(data, this.settings.keys.togglePane)) {
             this.inactivePaneHidden = !this.inactivePaneHidden;
             return { action: 'redraw', data: this.render() };
@@ -397,6 +442,9 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, 'Ctrl+U')) {
+            if (this.quickViewMode) {
+                this.quickViewMode = false;
+            }
             return this.handleMenuCommand({ type: 'swapPanels' });
         }
 
@@ -566,6 +614,11 @@ export class Panel {
         }
 
         if (data === '\t') {
+            if (this.quickViewMode) {
+                this.quickViewMode = false;
+                this.activePane = this.activePane === 'left' ? 'right' : 'left';
+                return { action: 'quickViewClose', data: this.render(), chdir: this.activePaneObj.cwd };
+            }
             this.activePane = this.activePane === 'left' ? 'right' : 'left';
             return { action: 'redraw', data: this.render(), chdir: this.activePaneObj.cwd };
         }
@@ -893,19 +946,28 @@ export class Panel {
     }
 
     private handleMouseFileArea(row: number, col: number, layout: Layout, isDrag: boolean): PanelInputResult {
-        const leftGeo = layout.leftPane;
-        const rightGeo = layout.rightPane;
         let targetPane: 'left' | 'right';
         let geo: PaneGeometry;
 
-        if (col >= leftGeo.startCol && col < leftGeo.startCol + leftGeo.width) {
-            targetPane = 'left';
-            geo = leftGeo;
-        } else if (col >= rightGeo.startCol && col < rightGeo.startCol + rightGeo.width) {
-            targetPane = 'right';
-            geo = rightGeo;
+        if (this.quickViewMode) {
+            targetPane = this.activePane;
+            geo = layout.leftPane;
+            if (col < geo.startCol || col >= geo.startCol + geo.width) {
+                return { action: 'none' };
+            }
         } else {
-            return { action: 'none' };
+            const leftGeo = layout.leftPane;
+            const rightGeo = layout.rightPane;
+
+            if (col >= leftGeo.startCol && col < leftGeo.startCol + leftGeo.width) {
+                targetPane = 'left';
+                geo = leftGeo;
+            } else if (col >= rightGeo.startCol && col < rightGeo.startCol + rightGeo.width) {
+                targetPane = 'right';
+                geo = rightGeo;
+            } else {
+                return { action: 'none' };
+            }
         }
 
         let chdir: string | undefined;
@@ -979,30 +1041,40 @@ export class Panel {
         const t = this.settings.theme;
         const out: string[] = [];
         const leftIsActive = this.activePane === 'left';
-        const leftHidden = this.inactivePaneHidden && leftIsActive === false;
-        const rightHidden = this.inactivePaneHidden && leftIsActive === true;
 
         out.push(resetStyle() + bgRgb(t.border.idle.bg));
         out.push(clearScreen());
 
-        if (leftHidden) {
-            out.push(this.renderTerminalAreaAt(layout, layout.leftPane));
-        } else {
-            out.push(this.left.render({
+        if (this.quickViewMode) {
+            const pane = this.activePaneObj;
+            out.push(pane.render({
                 geo: layout.leftPane, layout, theme: t,
-                isActive: leftIsActive, showClock: false,
-                selected: this.left.selected,
+                isActive: true, showClock: this.settings.clockEnabled,
+                selected: pane.selected,
             }));
-        }
-
-        if (rightHidden) {
-            out.push(this.renderTerminalAreaAt(layout, layout.rightPane));
         } else {
-            out.push(this.right.render({
-                geo: layout.rightPane, layout, theme: t,
-                isActive: !leftIsActive, showClock: this.settings.clockEnabled,
-                selected: this.right.selected,
-            }));
+            const leftHidden = this.inactivePaneHidden && leftIsActive === false;
+            const rightHidden = this.inactivePaneHidden && leftIsActive === true;
+
+            if (leftHidden) {
+                out.push(this.renderTerminalAreaAt(layout, layout.leftPane));
+            } else {
+                out.push(this.left.render({
+                    geo: layout.leftPane, layout, theme: t,
+                    isActive: leftIsActive, showClock: false,
+                    selected: this.left.selected,
+                }));
+            }
+
+            if (rightHidden) {
+                out.push(this.renderTerminalAreaAt(layout, layout.rightPane));
+            } else {
+                out.push(this.right.render({
+                    geo: layout.rightPane, layout, theme: t,
+                    isActive: !leftIsActive, showClock: this.settings.clockEnabled,
+                    selected: this.right.selected,
+                }));
+            }
         }
 
         out.push(this.renderCommandLine(layout));
@@ -1013,7 +1085,9 @@ export class Panel {
         if (this.menuPopup.active) {
             out.push(this.menuPopup.render(layout.topRow, 1, t, this.cols));
         } else if (this.searchPopup.active) {
-            const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
+            const activePaneGeo = this.quickViewMode
+                ? layout.leftPane
+                : (this.activePane === 'left' ? layout.leftPane : layout.rightPane);
             out.push(this.searchPopup.render(layout.bottomRow, activePaneGeo.startCol, t));
             out.push(this.searchPopup.renderShadow(cellAt));
         } else if (this.copyMovePopup.active) {
@@ -1095,10 +1169,22 @@ export class Panel {
         }
 
         const leftIsActive = this.activePane === 'left';
+
+        if (this.inactivePaneHidden && !this.quickViewMode) {
+            const hiddenGeo = leftIsActive ? layout.leftPane : layout.rightPane;
+            if (col >= hiddenGeo.startCol && col < hiddenGeo.startCol + hiddenGeo.width) {
+                return { ch: ' ', style: t.commandLine.idle };
+            }
+        }
+
         let pane: Pane;
         let geo: PaneGeometry;
         let isActive: boolean;
-        if (col <= layout.leftPane.startCol + layout.leftPane.width - 1) {
+        if (this.quickViewMode) {
+            pane = this.activePaneObj;
+            geo = layout.leftPane;
+            isActive = true;
+        } else if (col <= layout.leftPane.startCol + layout.leftPane.width - 1) {
             pane = this.left;
             geo = layout.leftPane;
             isActive = leftIsActive;
@@ -1240,43 +1326,22 @@ export class Panel {
     private renderTerminalAreaAt(layout: Layout, geo: PaneGeometry): string {
         const out: string[] = [];
         const t = this.settings.theme;
-        const border = applyStyle(t.border.idle);
-        const termStyle = applyStyle(t.commandLine.idle);
+        const termBg = bgRgb(t.commandLine.idle.bg);
 
         const top = layout.topRow;
-        const bottom = layout.bottomRow;
-        const innerHeight = bottom - top - 1;
-        const innerWidth = geo.width - 2;
+        const bottom = layout.cmdRow - 1;
+        const areaHeight = bottom - top + 1;
+        const areaWidth = geo.width;
+        const bufStartCol = geo.startCol - 1;
 
-        const title = ' Terminal ';
-        const fillLen = Math.max(0, geo.width - 2 - title.length);
-        const fillL = Math.floor(fillLen / 2);
-        const fillR = fillLen - fillL;
-        out.push(border + moveTo(top, geo.startCol));
-        out.push(DBOX.topLeft + DBOX.horizontal.repeat(fillL));
-        out.push(applyStyle(t.activePath.idle) + title);
-        out.push(border + DBOX.horizontal.repeat(fillR) + DBOX.topRight);
-
-        const cursorRow = this.termBuffer.getCursorRow();
-        const startRow = Math.max(0, cursorRow - innerHeight + 1);
-
-        for (let i = 0; i < innerHeight; i++) {
-            const termRow = startRow + i;
-            const screenRow = top + 1 + i;
-            const rowContent = this.termBuffer.getRow(termRow);
-            const truncated = rowContent.slice(0, innerWidth);
-            const pad = Math.max(0, innerWidth - truncated.length);
-
-            out.push(border + moveTo(screenRow, geo.startCol) + DBOX.vertical);
-            out.push(termStyle + truncated);
-            if (pad > 0) out.push(' '.repeat(pad));
-            out.push(border + DBOX.vertical);
+        for (let i = 0; i < areaHeight; i++) {
+            const termRow = top - 1 + i;
+            const screenRow = top + i;
+            out.push(moveTo(screenRow, geo.startCol));
+            out.push(termBg);
+            out.push(this.termBuffer.getStyledRowSlice(termRow, bufStartCol, areaWidth));
         }
-
-        out.push(border + moveTo(bottom, geo.startCol));
-        out.push(DBOX.bottomLeft + DBOX.horizontal.repeat(geo.width - 2) + DBOX.bottomRight);
         out.push(resetStyle());
-
         return out.join('');
     }
 

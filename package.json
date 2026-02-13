@@ -113,6 +113,16 @@
         "args": { "text": "\u001b[51;5u" },
         "key": "ctrl+3",
         "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "vscommander.quickView",
+        "key": "ctrl+q",
+        "when": "vscommander.panelVisible"
+      },
+      {
+        "command": "vscommander.togglePane",
+        "key": "ctrl+p",
+        "when": "vscommander.panelVisible"
       }
     ],
     "viewsContainers": {
@@ -232,6 +242,11 @@
           "type": "string",
           "default": "Ctrl+Right",
           "description": "Key binding for moving pane border right"
+        },
+        "vscommander.keyQuickView": {
+          "type": "string",
+          "default": "Ctrl+Q",
+          "description": "Key binding for Quick View (preview file in split editor)"
         }
       }
     },

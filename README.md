@@ -19,7 +19,8 @@ The project is a work in progress and not published to the marketplace yet.
 - **Real terminal underneath**: not a webview; the shell session persists when the panel is hidden
 - **Quick search**: press `Alt` + any letter to jump to matching files instantly
 - **Drive / mount popup**: `Alt+F1` / `Alt+F2` to switch drives (Windows) or mounted filesystems (Linux, macOS, FreeBSD)
-- **Half-panel mode**: `Ctrl+P` hides one pane to show recent terminal output alongside your files
+- **Quick View**: `Ctrl+Q` previews files in a VS Code split editor; shows directory info (folder/file counts, total size) for directories
+- **Half-panel mode**: `Ctrl+P` hides one pane to show color-rich terminal output alongside your files; commands run inline without hiding the panel
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
 - **Top menu bar**: F9 opens a Far Manager-style menu with Left, Files, Commands, Options, Right menus for sorting, column layout, and all panel operations
 - **Sorting**: Sort each pane independently by name, extension, size, date, or unsorted
@@ -68,6 +69,7 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `Alt+F1` / `Alt+F2` | Change drive popup (left / right pane) |
 | `Ctrl+H` | Toggle dotfile visibility |
 | `Ctrl+P` | Half-panel mode (show terminal in one pane) |
+| `Ctrl+Q` | Quick View -- preview file in VS Code split editor |
 | `Ctrl+Left` / `Ctrl+Right` | Resize panes |
 | `F3` | View -- highlight file in VS Code Explorer |
 | `F4` | Edit -- open file in VS Code editor |
@@ -96,6 +98,7 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `vscommander.keyDelete` | `F8` | Key binding for Delete |
 | `vscommander.keyMenu` | `F9` | Key binding for Menu |
 | `vscommander.keyQuit` | `F10` | Key binding for Quit |
+| `vscommander.keyQuickView` | `Ctrl+Q` | Key binding for Quick View |
 | `vscommander.key*` | -- | All panel actions are remappable (see USER.md) |
 
 ## License

@@ -132,6 +132,7 @@ export interface KeyBindings {
     detach: string;
     resizeLeft: string;
     resizeRight: string;
+    quickView: string;
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -151,6 +152,7 @@ export const DEFAULT_KEY_BINDINGS: KeyBindings = {
     detach: 'Alt+Enter',
     resizeLeft: 'Ctrl+Left',
     resizeRight: 'Ctrl+Right',
+    quickView: 'Ctrl+Q',
 };
 
 const KEY_SEQUENCES: Record<string, string[]> = {
@@ -199,6 +201,7 @@ const KEY_SEQUENCES: Record<string, string[]> = {
     'Numpad*': ['\x1bOj'],
     'Numpad+': ['\x1bOk'],
     'Numpad-': ['\x1bOm'],
+    'Ctrl+Q': ['\x11'],
     'Ctrl+F12': ['\x1b[24;5~'],
 };
 

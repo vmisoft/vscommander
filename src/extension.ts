@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnShell, ShellProxy } from './shell';
 import { Panel } from './panel';
-import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings } from './settings';
+import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings, resolveTheme, ThemeName, ColorOverride, applyColorOverrides, themeToOverrides, THEME_KEYS } from './settings';
 import { CopyMoveResult } from './copyMovePopup';
 import { DirectoryInfoProvider } from './directoryInfo';
 import { BlinkTimer, PollTimer } from './timerManager';
@@ -14,12 +14,31 @@ import { QuickViewController, QuickViewHost } from './quickView';
 function readSettings(): PanelSettings {
     const cfg = vscode.workspace.getConfiguration('vscommander');
     const toggleKey = os.platform() === 'darwin' ? '\u2303O' : 'Ctrl+O';
+    const themeName = (cfg.get<string>('theme', 'far') || 'far') as ThemeName;
+    let theme = resolveTheme(themeName, vscode.window.activeColorTheme.kind);
+    const baseTheme = theme;
+    const colorsCfg = vscode.workspace.getConfiguration('vscommander.colors');
+    const overrides: Record<string, ColorOverride> = {};
+    for (const key of THEME_KEYS) {
+        const val = colorsCfg.inspect<ColorOverride>(key);
+        const ov = val?.globalValue ?? val?.workspaceValue ?? val?.workspaceFolderValue;
+        if (ov && Object.keys(ov).length > 0) {
+            overrides[key] = ov;
+        }
+    }
+    if (Object.keys(overrides).length > 0) {
+        theme = applyColorOverrides(theme, overrides);
+    }
     return mergeSettings({
         showDotfiles: cfg.get<boolean>('showDotfiles', DEFAULT_SETTINGS.showDotfiles),
         clockEnabled: cfg.get<boolean>('clock', DEFAULT_SETTINGS.clockEnabled),
         panelColumns: cfg.get<number>('panelColumns', DEFAULT_SETTINGS.panelColumns),
         workspaceDirs: (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath),
         toggleKey,
+        theme,
+        baseTheme,
+        themeName,
+        colorOverrides: overrides,
         keys: {
             view: cfg.get<string>('keyView', DEFAULT_KEY_BINDINGS.view),
             edit: cfg.get<string>('keyEdit', DEFAULT_KEY_BINDINGS.edit),
@@ -60,12 +79,18 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private cmdBlinkTimer = new BlinkTimer(500);
     private mkdirBlinkTimer = new BlinkTimer(500);
     private copyMoveBlinkTimer = new BlinkTimer(500);
+    private colorEditorBlinkTimer = new BlinkTimer(500);
     private isDetached = false;
+    private lastViewedFile: string | undefined;
     private quickView: QuickViewController;
     private commandRunning = false;
     private commandPollTimer = new PollTimer();
     private commandIdleCount = 0;
     private spinnerTimer = new BlinkTimer(150);
+    private pendingRedrawAfterResize = false;
+    private pendingChdir: string | undefined;
+    private themeListener: vscode.Disposable | undefined;
+    private configListener: vscode.Disposable | undefined;
 
     constructor(cwd: string) {
         this.cwd = cwd;
@@ -74,11 +99,28 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 const uri = targetType === 'dir'
                     ? vscode.Uri.parse('vscommander-dirinfo:directory-info')
                     : vscode.Uri.file(filePath);
+                const ratio = this.panel ? this.panel.getActivePaneRatio() : 0.5;
+                const termSize = Math.ceil(ratio * 1000);
+                const previewSize = 1000 - termSize;
+                const setLayout = () => {
+                    const groups = side === 'right'
+                        ? [{ size: termSize }, { size: previewSize }]
+                        : [{ size: previewSize }, { size: termSize }];
+                    vscode.commands.executeCommand('vscode.setEditorLayout', {
+                        orientation: 0,
+                        groups,
+                    });
+                };
                 if (side === 'right') {
-                    vscode.commands.executeCommand('vscode.open', uri, {
-                        viewColumn: vscode.ViewColumn.Beside,
-                        preview: true,
-                        preserveFocus: true,
+                    vscode.commands.executeCommand('vscode.setEditorLayout', {
+                        orientation: 0,
+                        groups: [{ size: termSize }, { size: previewSize }],
+                    }).then(() => {
+                        vscode.commands.executeCommand('vscode.open', uri, {
+                            viewColumn: vscode.ViewColumn.Two,
+                            preview: true,
+                            preserveFocus: true,
+                        });
                     });
                 } else {
                     vscode.commands.executeCommand('vscode.open', uri, {
@@ -87,7 +129,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                         preserveFocus: false,
                     }).then(() => {
                         vscode.commands.executeCommand('workbench.action.moveActiveEditorGroupLeft').then(() => {
-                            vscode.commands.executeCommand('workbench.action.focusNextGroup');
+                            vscode.commands.executeCommand('workbench.action.focusNextGroup').then(setLayout);
                         });
                     });
                 }
@@ -119,6 +161,33 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
             scanDir: (dirPath) => dirInfoProvider.scan(dirPath),
         };
         this.quickView = new QuickViewController(host);
+
+        vscode.window.tabGroups.onDidChangeTabGroups((e) => {
+            if (!this.quickView.active || !this.panel?.visible) return;
+            if (e.closed.length > 0) {
+                const side = this.quickView.side;
+                const targetCol = side === 'right'
+                    ? vscode.ViewColumn.Two
+                    : vscode.ViewColumn.One;
+                const wasTarget = e.closed.some(g => g.viewColumn === targetCol);
+                if (wasTarget) {
+                    this.panel.quickViewMode = false;
+                    this.quickView.active = false;
+                    this.quickView.lastFile = undefined;
+                    this.pendingRedrawAfterResize = true;
+                }
+            }
+        });
+
+        this.themeListener = vscode.window.onDidChangeActiveColorTheme(() => {
+            this.reloadSettingsAndRedraw();
+        });
+
+        this.configListener = vscode.workspace.onDidChangeConfiguration((e) => {
+            if (e.affectsConfiguration('vscommander')) {
+                this.reloadSettingsAndRedraw();
+            }
+        });
     }
 
     open(initialDimensions: vscode.TerminalDimensions | undefined): void {
@@ -142,7 +211,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
         if (this.shell) {
             this.shell.onData((data: string) => {
-                if (this.panel && !this.shellRouter.isSuppressed()) {
+                if (this.panel) {
                     this.panel.termBuffer.feed(data);
                 }
 
@@ -173,15 +242,28 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', true);
     }
 
+    private reloadSettingsAndRedraw(): void {
+        if (!this.panel) return;
+        this.panel.settings = readSettings();
+        if (this.panel.visible) {
+            this.panel.left.refresh(this.panel.settings);
+            this.panel.right.refresh(this.panel.settings);
+            this.writeEmitter.fire(this.panel.redraw());
+        }
+    }
+
     close(): void {
         if (this.quickView.active) {
             this.quickView.close();
         }
+        this.themeListener?.dispose();
+        this.configListener?.dispose();
         this.clockTimer.stop();
         this.blinkTimer.stop();
         this.cmdBlinkTimer.stop();
         this.mkdirBlinkTimer.stop();
         this.copyMoveBlinkTimer.stop();
+        this.colorEditorBlinkTimer.stop();
         this.spinnerTimer.stop();
         this.stopCommandPoll();
         this.shell?.kill();
@@ -192,6 +274,9 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         if (this.panel?.visible) {
             const wasSearchActive = this.panel.isSearchActive;
             const result = this.panel.handleInput(data);
+            if (result.action !== 'viewFile') {
+                this.lastViewedFile = undefined;
+            }
             switch (result.action) {
                 case 'quit':
                     this.shell?.kill();
@@ -233,6 +318,10 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     this.shell?.write(result.data);
                     if (this.panel.inactivePaneHidden) {
                         this.panel.shellInputLen = 0;
+                        this.panel.waitingMode = true;
+                        this.panel.spinnerFrame = 0;
+                        this.writeEmitter.fire(this.panel.redraw());
+                        this.startSpinnerTimer();
                         this.commandRunning = true;
                         this.commandIdleCount = 0;
                         this.pollCommandDone();
@@ -261,6 +350,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     if (this.quickView.active) {
                         this.panel.quickViewMode = false;
                         this.quickView.close();
+                        this.pendingRedrawAfterResize = true;
                     }
                     this.openFile(result.filePath);
                     break;
@@ -277,15 +367,24 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 case 'copyMove':
                     this.executeCopyMove(result.result);
                     break;
+                case 'saveColors':
+                    this.saveColorOverrides(result.overrides);
+                    break;
+                case 'copyThemeColors':
+                    this.copyThemeColors();
+                    break;
+                case 'resetColors':
+                    this.resetColorOverrides();
+                    break;
                 case 'quickView':
                     this.writeEmitter.fire(result.data);
                     this.quickView.open(result.filePath, result.targetType, result.side);
                     break;
                 case 'quickViewClose':
                     this.quickView.close();
-                    this.writeEmitter.fire(result.data);
+                    this.pendingRedrawAfterResize = true;
                     if (result.chdir) {
-                        if (this.shell && this.panel) this.shellRouter.changeDir(result.chdir, this.shell, this.panel);
+                        this.pendingChdir = result.chdir;
                     }
                     break;
                 case 'none':
@@ -327,6 +426,15 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 },
                 s => this.writeEmitter.fire(s),
             );
+            this.colorEditorBlinkTimer.sync(
+                () => !!this.panel?.isColorEditorBlinkActive,
+                () => this.panel!.resetColorEditorBlink(),
+                () => {
+                    if (this.panel?.isColorEditorBlinkActive) return this.panel.renderColorEditorCursorBlink();
+                    this.colorEditorBlinkTimer.stop();
+                },
+                s => this.writeEmitter.fire(s),
+            );
             this.restartCmdBlinkTimer();
         } else {
             this.shell?.write(data);
@@ -343,6 +451,13 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
             const redraw = this.panel.resize(this.cols, this.rows);
             if (redraw) {
                 this.writeEmitter.fire(redraw);
+            }
+            if (this.pendingRedrawAfterResize) {
+                this.pendingRedrawAfterResize = false;
+                if (this.pendingChdir) {
+                    if (this.shell) this.shellRouter.changeDir(this.pendingChdir, this.shell, this.panel);
+                    this.pendingChdir = undefined;
+                }
             }
         }
     }
@@ -514,8 +629,17 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         const uri = vscode.Uri.file(filePath);
         const wsDir = vscode.workspace.getWorkspaceFolder(uri);
         if (wsDir) {
-            vscode.commands.executeCommand('revealInExplorer', uri);
-            blinkDecoration.blink(uri, 24);
+            if (this.lastViewedFile === filePath) {
+                this.lastViewedFile = undefined;
+                vscode.commands.executeCommand('workbench.action.closeSidebar');
+                return;
+            }
+            this.lastViewedFile = filePath;
+            vscode.commands.executeCommand('revealInExplorer', uri).then(() => {
+                setTimeout(() => {
+                    vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+                }, 100);
+            });
         } else {
             vscode.commands.executeCommand('revealFileInOS', uri);
         }
@@ -584,6 +708,34 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         );
     }
 
+    private async saveColorOverrides(overrides: Record<string, ColorOverride>): Promise<void> {
+        const cfg = vscode.workspace.getConfiguration('vscommander.colors');
+        for (const key of THEME_KEYS) {
+            const value = overrides[key];
+            if (value && Object.keys(value).length > 0) {
+                await cfg.update(key, value, vscode.ConfigurationTarget.Global);
+            } else {
+                await cfg.update(key, undefined, vscode.ConfigurationTarget.Global);
+            }
+        }
+    }
+
+    private async copyThemeColors(): Promise<void> {
+        if (!this.panel) return;
+        const all = themeToOverrides(this.panel.settings.theme);
+        const cfg = vscode.workspace.getConfiguration('vscommander.colors');
+        for (const [key, value] of Object.entries(all)) {
+            await cfg.update(key, value, vscode.ConfigurationTarget.Global);
+        }
+    }
+
+    private async resetColorOverrides(): Promise<void> {
+        const cfg = vscode.workspace.getConfiguration('vscommander.colors');
+        for (const key of THEME_KEYS) {
+            await cfg.update(key, undefined, vscode.ConfigurationTarget.Global);
+        }
+    }
+
     private refreshPanels(): void {
         if (this.panel?.visible) {
             this.panel.left.refresh(this.panel.settings);
@@ -593,58 +745,9 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     }
 }
 
-class BlinkDecorationProvider implements vscode.FileDecorationProvider {
-    private _onDidChange = new vscode.EventEmitter<vscode.Uri | vscode.Uri[]>();
-    onDidChangeFileDecorations = this._onDidChange.event;
-    private blinkUri: string | undefined;
-    private blinkOn = false;
-    private blinkTimer: ReturnType<typeof setTimeout> | undefined;
-
-    provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
-        if (this.blinkUri && uri.toString() === this.blinkUri && this.blinkOn) {
-            return { badge: '\u25cf' };
-        }
-        return undefined;
-    }
-
-    blink(uri: vscode.Uri, times: number): void {
-        this.stop();
-        this.blinkUri = uri.toString();
-        this.blinkOn = true;
-        this._onDidChange.fire(uri);
-        let count = 1;
-        const total = times * 2;
-        const step = () => {
-            this.blinkTimer = setTimeout(() => {
-                count++;
-                this.blinkOn = !this.blinkOn;
-                this._onDidChange.fire(uri);
-                if (count < total) {
-                    step();
-                } else {
-                    this.blinkTimer = setTimeout(() => {
-                        this.blinkUri = undefined;
-                        this.blinkOn = false;
-                        this._onDidChange.fire(uri);
-                        this.blinkTimer = undefined;
-                    }, 100);
-                }
-            }, 25);
-        };
-        step();
-    }
-
-    private stop(): void {
-        if (this.blinkTimer) {
-            clearTimeout(this.blinkTimer);
-            this.blinkTimer = undefined;
-        }
-    }
-}
-
-const blinkDecoration = new BlinkDecorationProvider();
 const dirInfoProvider = new DirectoryInfoProvider();
 let activeTerminal: VSCommanderTerminal | undefined;
+let activeVscodeTerminal: vscode.Terminal | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     const openCmd = vscode.commands.registerCommand('vscommander.open', () => {
@@ -660,6 +763,7 @@ export function activate(context: vscode.ExtensionContext) {
             location: vscode.TerminalLocation.Editor,
             iconPath: new vscode.ThemeIcon('preview'),
         });
+        activeVscodeTerminal = terminal;
         terminal.show();
         const listener = vscode.window.onDidChangeActiveTerminal((t) => {
             if (t === terminal) {
@@ -708,13 +812,19 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    const blinkDisposable = vscode.window.registerFileDecorationProvider(blinkDecoration);
     const dirInfoDisposable = vscode.workspace.registerTextDocumentContentProvider('vscommander-dirinfo', dirInfoProvider);
 
-    context.subscriptions.push(openCmd, toggleCmd, quickViewCmd, togglePaneCmd, sidebarTree, sidebarVisibility, blinkDisposable, dirInfoDisposable);
+    const terminalFocusListener = vscode.window.onDidChangeActiveTerminal((t) => {
+        if (t && t === activeVscodeTerminal) {
+            t.show(false);
+        }
+    });
+
+    context.subscriptions.push(openCmd, toggleCmd, quickViewCmd, togglePaneCmd, sidebarTree, sidebarVisibility, dirInfoDisposable, terminalFocusListener);
 }
 
 export function deactivate() {
     dirInfoProvider.dispose();
     activeTerminal = undefined;
+    activeVscodeTerminal = undefined;
 }

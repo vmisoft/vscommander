@@ -29,15 +29,35 @@ export class DrivePopup extends Popup {
         super();
     }
 
-    open(target?: 'left' | 'right', settings?: PanelSettings): void {
+    open(target?: 'left' | 'right', settings?: PanelSettings, paneCwd?: string): void {
         if (!target || !settings) return;
         const entries = DrivePopup.buildEntries(settings.workspaceDirs);
         if (entries.length === 0) return;
         super.open();
         this.targetPane = target;
-        this.entries = entries;
+        let locationDesc = 'N/A';
+        if (paneCwd) {
+            try {
+                const stat = fs.statSync(paneCwd);
+                if (stat.isDirectory()) {
+                    locationDesc = path.basename(paneCwd) || paneCwd;
+                }
+            } catch {
+                // path doesn't exist on disk
+            }
+        }
+        const otherSide = target === 'left' ? 'Right' : 'Left';
+        const locationEntry: DriveEntry = {
+            label: otherSide + ' panel location',
+            description: locationDesc,
+            totalSize: 0,
+            freeSpace: 0,
+            path: locationDesc === 'N/A' ? '' : paneCwd!,
+            group: 'location',
+        };
+        this.entries = [...entries, locationEntry];
         this.cursor = 0;
-        this.separatorIndex = entries.findIndex(e => e.group === 'workspace');
+        this.separatorIndex = this.entries.findIndex(e => e.group === 'workspace');
     }
 
     close(): void {
@@ -88,21 +108,30 @@ export class DrivePopup extends Popup {
             const ch = data;
             const workspaceStart = this.entries.findIndex(e => e.group === 'workspace');
 
+            if (ch === '`') {
+                const locIdx = this.entries.findIndex(e => e.group === 'location');
+                if (locIdx >= 0 && this.entries[locIdx].path) {
+                    this.cursor = locIdx;
+                    return this.closeWithConfirm();
+                }
+                return { action: 'consumed' };
+            }
+
             if (ch === '0') {
                 if (workspaceStart >= 0) {
                     this.cursor = workspaceStart;
-                    this.close();
-                    return { action: 'close', confirm: true };
+                    return this.closeWithConfirm();
                 }
                 return { action: 'consumed' };
             }
 
             if (ch >= '1' && ch <= '9') {
-                const idx = parseInt(ch, 10) - 1;
-                if (idx >= 0 && idx < this.entries.length && this.entries[idx].group !== 'workspace') {
-                    this.cursor = idx;
-                    this.close();
-                    return { action: 'close', confirm: true };
+                const driveEntries = this.entries.filter(e => e.group === 'drive');
+                const driveIdx = parseInt(ch, 10) - 1;
+                if (driveIdx >= 0 && driveIdx < driveEntries.length) {
+                    const target = driveEntries[driveIdx];
+                    this.cursor = this.entries.indexOf(target);
+                    return this.closeWithConfirm();
                 }
                 return { action: 'consumed' };
             }
@@ -115,8 +144,7 @@ export class DrivePopup extends Popup {
                     );
                     if (driveIdx >= 0) {
                         this.cursor = driveIdx;
-                        this.close();
-                        return { action: 'close', confirm: true };
+                        return this.closeWithConfirm();
                     }
                 }
 
@@ -125,8 +153,7 @@ export class DrivePopup extends Popup {
                     const targetIdx = workspaceStart + offset;
                     if (targetIdx < this.entries.length) {
                         this.cursor = targetIdx;
-                        this.close();
-                        return { action: 'close', confirm: true };
+                        return this.closeWithConfirm();
                     }
                 }
                 return { action: 'consumed' };
@@ -164,6 +191,7 @@ export class DrivePopup extends Popup {
     }
 
     private getGroupedEntries(): DriveEntry[][] {
+        const locations = this.entries.filter(e => e.group === 'location');
         const drives = this.entries.filter(e => e.group === 'drive');
         const homes = this.entries.filter(e => e.group === 'home');
         const workspaces = this.entries.filter(e => e.group === 'workspace');
@@ -171,6 +199,7 @@ export class DrivePopup extends Popup {
         if (drives.length > 0) sections.push(drives);
         if (homes.length > 0) sections.push(homes);
         if (workspaces.length > 0) sections.push(workspaces);
+        if (locations.length > 0) sections.push(locations);
         return sections;
     }
 
@@ -179,17 +208,26 @@ export class DrivePopup extends Popup {
     }
 
     private buildTable(theme: Theme): { table: PopupTable; styles: PopupTableStyles } {
+        const locationEntries = this.entries.filter(e => e.group === 'location');
         const driveEntries = this.entries.filter(e => e.group === 'drive');
         const homeEntries = this.entries.filter(e => e.group === 'home');
         const workspaceEntries = this.entries.filter(e => e.group === 'workspace');
         const hasSizeCols = driveEntries.some(e => e.totalSize > 0 || e.freeSpace > 0);
 
-        const driveRows: TableRow[] = driveEntries.map(e => ({
+        const locationRows: TableRow[] = locationEntries.map(e => ({
+            label: e.label,
+            detail: e.description,
+            spanAll: true,
+            numberLabel: '`',
+        }));
+
+        const driveRows: TableRow[] = driveEntries.map((e, i) => ({
             label: e.label,
             detail: e.description,
             fixedCols: hasSizeCols
                 ? [formatSizeHuman(e.totalSize), formatSizeHuman(e.freeSpace)]
                 : undefined,
+            numberLabel: PopupTable.indexToPrefix(i),
         }));
 
         const homeRows: TableRow[] = homeEntries.map(e => ({
@@ -208,6 +246,7 @@ export class DrivePopup extends Popup {
         if (driveRows.length > 0) sections.push({ rows: driveRows });
         if (homeRows.length > 0) sections.push({ rows: homeRows });
         if (workspaceRows.length > 0) sections.push({ rows: workspaceRows, startIndex: 9 });
+        if (locationRows.length > 0) sections.push({ rows: locationRows });
 
         const table = new PopupTable();
         table.title = 'Change drive';

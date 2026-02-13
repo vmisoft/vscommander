@@ -1,10 +1,11 @@
-import { fgRgb, bgRgb, bold } from './draw';
+import { fgColor, bgColor, bold, dim } from './draw';
 import { TextStyle, RenderStyle, Theme } from './settings';
 import { DirEntry, PaneGeometry, Layout, PaneStats } from './types';
 
 export function applyStyle(s: TextStyle): string {
-    let out = fgRgb(s.fg) + bgRgb(s.bg);
+    let out = fgColor(s.fg) + bgColor(s.bg);
     if (s.bold) out += bold();
+    if (s.dim) out += dim();
     return out;
 }
 
@@ -148,6 +149,7 @@ export function displayWidth(str: string): number {
 }
 
 export function dimHex(hex: string): string {
+    if (hex.charCodeAt(0) === 0x40) return hex; // ANSI indexed — can't halve
     const r = Math.floor(parseInt(hex.slice(0, 2), 16) / 2);
     const g = Math.floor(parseInt(hex.slice(2, 4), 16) / 2);
     const b = Math.floor(parseInt(hex.slice(4, 6), 16) / 2);
@@ -157,5 +159,8 @@ export function dimHex(hex: string): string {
 }
 
 export function dimStyle(s: TextStyle): TextStyle {
+    if (s.fg.charCodeAt(0) === 0x40 || s.bg.charCodeAt(0) === 0x40) {
+        return { fg: s.fg, bg: s.bg, bold: false, dim: true };
+    }
     return { fg: dimHex(s.fg), bg: dimHex(s.bg), bold: false };
 }

@@ -1,4 +1,4 @@
-import { moveTo, resetStyle, bgRgb } from './draw';
+import { moveTo, resetStyle, bgColor } from './draw';
 import { Theme } from './settings';
 import { Layout, PaneGeometry } from './types';
 import { TerminalBuffer } from './terminalBuffer';
@@ -12,7 +12,7 @@ export class TerminalArea {
 
     renderAt(layout: Layout, geo: PaneGeometry, termBuffer: TerminalBuffer, theme: Theme): string {
         const out: string[] = [];
-        const termBg = bgRgb(theme.commandLine.idle.bg);
+        const termBg = bgColor(theme.commandLine.idle.bg);
 
         const top = layout.topRow;
         const bottom = layout.cmdRow - 1;

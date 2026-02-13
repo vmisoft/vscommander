@@ -8,7 +8,7 @@ export interface DriveEntry {
     totalSize: number;
     freeSpace: number;
     path: string;
-    group: 'drive' | 'home' | 'workspace';
+    group: 'location' | 'drive' | 'home' | 'workspace';
 }
 
 export interface DirEntry {

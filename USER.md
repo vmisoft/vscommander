@@ -241,6 +241,9 @@ Active options show a checkmark. Column count and sort mode are per-pane.
 | Item | Description |
 |------|-------------|
 | Panel settings | Open VS Code settings filtered to VSCommander |
+| Edit colors | Open the interactive color editor (see below) |
+| Copy theme colors | Snapshot all current theme colors as explicit overrides |
+| Reset colors | Remove all color overrides (disabled when no overrides exist) |
 
 ### Mouse in the Menu
 
@@ -334,11 +337,72 @@ Configure VSCommander in VS Code settings (`Ctrl+,` / `Cmd+,`):
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
+| `vscommander.theme` | string | `"far"` | Color theme (see below) |
 | `vscommander.showDotfiles` | boolean | `true` | Show dotfiles (hidden files) in the panel |
 | `vscommander.clock` | boolean | `true` | Show clock (HH:MM) in the top-right corner |
 | `vscommander.panelColumns` | number | `2` | Number of file columns per panel (1, 2, or 3) |
 
 Settings are read each time the panel is opened. The `Ctrl+H` toggle overrides `showDotfiles` for the current session only.
+
+### Color Theme
+
+The `vscommander.theme` setting controls the panel's color scheme:
+
+- **`"far"`** (default): Classic Far Manager theme -- cyan-on-dark-blue with teal accents. Hardcoded true-color values for a pixel-perfect retro look.
+- **`"vscode"`**: Colors that match the active VS Code color theme. Uses ANSI standard color indices that VS Code's terminal resolves to the current theme's `terminal.ansi*` color tokens. Automatically adapts when you switch between dark and light themes, and works with any installed color theme (Dark+, Light+, Monokai, Solarized, etc.).
+
+The panel redraws instantly when you change the setting or switch VS Code themes.
+
+### Color Overrides
+
+Every visual element can be individually customized via `vscommander.colors.*` settings. Each setting is an object with optional properties:
+
+- `fg` -- foreground color
+- `bg` -- background color
+- `bold` -- bold text (`true`/`false`)
+- `selectedFg` -- foreground when cursor is on this element
+- `selectedBg` -- background when cursor is on this element
+- `selectedBold` -- bold when cursor is on this element
+
+Color values can be hex strings (e.g. `ff0000` for red) or ANSI index notation (`@0`-`@15` for the 16 standard terminal colors, `@d` for the terminal's default foreground/background). Overrides are applied on top of the active base theme (`far` or `vscode`).
+
+Example in `settings.json`:
+```json
+"vscommander.colors.directory": { "fg": "@4", "bold": true },
+"vscommander.colors.border": { "fg": "@8" }
+```
+
+The settings are organized into groups in the VS Code settings UI: **Colors: Panel**, **Colors: Files**, **Colors: Command Line & Keys**, **Colors: Search**, **Colors: Drive Popup**, **Colors: Dialogs**, **Colors: Menu**. See the settings editor for the full list of elements.
+
+### Interactive Color Editor
+
+Open from **F9 > Options > Edit colors**. The color editor popup shows all 39 theme elements organized by group (Panel, Command Line, Search, Drive Popup, Dialogs, Menu) on the left, and a color palette with controls on the right.
+
+**Layout:**
+- **Left side**: Scrollable element list with group headers. The current element is highlighted with `>`.
+- **Right side**: State toggle (Idle/Selected), 16-color ANSI palette grid for foreground and background, hex input fields for custom colors, bold checkbox, and a live sample preview.
+
+**Navigation:**
+
+| Key | Action |
+|-----|--------|
+| `Tab` / `Shift+Tab` | Cycle focus: list > state > fg grid > fg hex > bg grid > bg hex > bold > buttons |
+| `Up` / `Down` | In element list: move cursor; in palette grid: navigate rows |
+| `Left` / `Right` | In state: toggle idle/selected; in palette grid: navigate cells |
+| `Space` | In bold checkbox: toggle; in palette grid: confirm selection |
+| Arrow keys | In hex input: move cursor within input field |
+| `Enter` | In list: jump to fg grid; in buttons: activate OK/Cancel |
+| `Escape` | Cancel and close (no changes saved) |
+
+**Palette grid**: Two rows of 8 color cells each, representing the 16 standard ANSI terminal colors. A "Df" (Default) option selects the terminal's default foreground/background. Selected cells are marked with `<>` when focused.
+
+**Hex input**: Type a 6-digit hex color (e.g. `ff0000` for red) for custom colors beyond the 16-color palette. The hex value takes effect once all 6 digits are entered.
+
+**Sample preview**: Shows "Sample text" rendered with the current foreground, background, and bold settings, updating as you make changes.
+
+Press **OK** to save all changes to VS Code settings. Press **Cancel** or **Escape** to discard.
+
+**Copy theme colors** (F9 > Options) writes every current color as an explicit override, creating a snapshot you can then customize incrementally. **Reset colors** clears all overrides, returning to the base theme.
 
 ### Key Binding Settings
 

@@ -2,7 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     enterAltScreen, leaveAltScreen, clearScreen, showCursor, hideCursor,
-    resetStyle, bgRgb, enableMouse, disableMouse
+    resetStyle, bgColor, enableMouse, disableMouse
 } from './draw';
 import { MouseEvent, parseMouseEvent } from './mouse';
 import { PanelSettings, TextStyle, matchesKeyBinding } from './settings';
@@ -16,6 +16,8 @@ import { ConfirmPopup } from './confirmPopup';
 import { MkdirPopup } from './mkdirPopup';
 import { MenuPopup, MenuCommand } from './menuPopup';
 import { CopyMovePopup, CopyMoveMode, CopyMoveResult } from './copyMovePopup';
+import { ColorEditorPopup } from './colorEditorPopup';
+import { ColorOverride } from './settings';
 import { TerminalBuffer } from './terminalBuffer';
 import { getCellAt } from './cellQuery';
 import { TerminalArea } from './terminalArea';
@@ -38,6 +40,9 @@ export type PanelInputResult =
     | { action: 'copyMove'; result: CopyMoveResult }
     | { action: 'quickView'; data: string; filePath: string; targetType: 'file' | 'dir'; side: 'left' | 'right' }
     | { action: 'quickViewClose'; data: string; chdir?: string }
+    | { action: 'saveColors'; overrides: Record<string, ColorOverride> }
+    | { action: 'copyThemeColors' }
+    | { action: 'resetColors' }
     | { action: 'none' };
 
 export class Panel {
@@ -54,6 +59,7 @@ export class Panel {
     mkdirPopup: MkdirPopup;
     menuPopup: MenuPopup;
     copyMovePopup: CopyMovePopup;
+    colorEditorPopup: ColorEditorPopup;
     termBuffer: TerminalBuffer;
     private terminalArea = new TerminalArea();
     private fkeyBar = new FKeyBar();
@@ -86,6 +92,7 @@ export class Panel {
         this.mkdirPopup = new MkdirPopup();
         this.menuPopup = new MenuPopup();
         this.copyMovePopup = new CopyMovePopup();
+        this.colorEditorPopup = new ColorEditorPopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
         this.syncPopupBounds();
     }
@@ -121,7 +128,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.colorEditorPopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -153,10 +160,12 @@ export class Panel {
     get hasActivePopup(): boolean {
         return this.searchPopup.active || this.drivePopup.active
             || this.confirmPopup.active || this.mkdirPopup.active
-            || this.menuPopup.active || this.copyMovePopup.active;
+            || this.menuPopup.active || this.copyMovePopup.active
+            || this.colorEditorPopup.active;
     }
 
     private get activePopupObj(): Popup | null {
+        if (this.colorEditorPopup.active) return this.colorEditorPopup;
         if (this.confirmPopup.active) return this.confirmPopup;
         if (this.copyMovePopup.active) return this.copyMovePopup;
         if (this.mkdirPopup.active) return this.mkdirPopup;
@@ -168,6 +177,12 @@ export class Panel {
 
     get activePaneObj(): Pane {
         return this.activePane === 'left' ? this.left : this.right;
+    }
+
+    getActivePaneRatio(): number {
+        const lw = this.leftWidth;
+        const activeCols = this.activePane === 'left' ? lw : this.cols - lw;
+        return (activeCols + 1) / this.cols;
     }
 
     getQuickViewTarget(): { type: 'file' | 'dir'; path: string } {
@@ -234,6 +249,19 @@ export class Panel {
         return this.copyMovePopup.renderCopyMoveBlink(this.rows, this.cols, this.settings.theme);
     }
 
+    get isColorEditorBlinkActive(): boolean {
+        return this.colorEditorPopup.active && this.colorEditorPopup.hasBlink;
+    }
+
+    resetColorEditorBlink(): void {
+        this.colorEditorPopup.resetColorEditorBlink();
+    }
+
+    renderColorEditorCursorBlink(): string {
+        if (!this.visible || !this.colorEditorPopup.active) return '';
+        return this.colorEditorPopup.renderColorEditorBlink(this.rows, this.cols, this.settings.theme);
+    }
+
     renderSearchCursorBlink(): string {
         if (!this.visible || !this.searchPopup.active) return '';
         const layout = this.getLayout();
@@ -272,6 +300,10 @@ export class Panel {
                 return this.handleMouse(mouse, layout, activePaneGeo);
             }
             return { action: 'none' };
+        }
+
+        if (this.colorEditorPopup.active) {
+            return this.resolveColorEditorResult(this.colorEditorPopup.handleInput(data));
         }
 
         if (this.menuPopup.active) {
@@ -347,10 +379,12 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, this.settings.keys.menu)) {
+            const hasOverrides = Object.keys(this.settings.colorOverrides).length > 0;
             this.menuPopup.openMenu(
                 this.settings, this.activePane,
                 this.left.sortMode, this.right.sortMode,
                 this.left.colCount, this.right.colCount,
+                hasOverrides,
             );
             return { action: 'redraw', data: this.render() };
         }
@@ -473,10 +507,12 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, 'Ctrl+F12')) {
+            const hasOverrides = Object.keys(this.settings.colorOverrides).length > 0;
             this.menuPopup.openMenu(
                 this.settings, this.activePane,
                 this.left.sortMode, this.right.sortMode,
                 this.left.colCount, this.right.colCount,
+                hasOverrides,
             );
             this.menuPopup.selectedMenu = this.activePane === 'left' ? 0 : 4;
             this.menuPopup.dropdownOpen = true;
@@ -679,6 +715,7 @@ export class Panel {
         const popup = this.activePopupObj;
 
         const resolvePopup = (result: PopupInputResult): PanelInputResult => {
+            if (popup === this.colorEditorPopup) return this.resolveColorEditorResult(result);
             if (popup === this.menuPopup) return this.resolveMenuResult(result);
             if (popup === this.copyMovePopup) return this.resolveCopyMoveResult(result);
             return this.resolvePopupResult(result);
@@ -755,6 +792,14 @@ export class Panel {
     private resolveMenuResult(result: PopupInputResult): PanelInputResult {
         if (result.action === 'close' && result.confirm && result.command) {
             return this.handleMenuCommand(result.command as MenuCommand);
+        }
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private resolveColorEditorResult(result: PopupInputResult): PanelInputResult {
+        if (result.action === 'close' && result.confirm) {
+            const overrides = this.colorEditorPopup.getOverrides();
+            return { action: 'saveColors', overrides };
         }
         return { action: 'redraw', data: this.render() };
     }
@@ -839,13 +884,27 @@ export class Panel {
             case 'openSettings': {
                 return { action: 'openSettings' };
             }
+            case 'editColors': {
+                this.colorEditorPopup.openWith(this.settings.baseTheme, this.settings.colorOverrides);
+                this.colorEditorPopup.setConfirmAction(() => {
+                    return { action: 'saveColors', overrides: this.colorEditorPopup.getOverrides() };
+                });
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'copyThemeColors': {
+                return { action: 'copyThemeColors' };
+            }
+            case 'resetColors': {
+                return { action: 'resetColors' };
+            }
             default:
                 return { action: 'redraw', data: this.render() };
         }
     }
 
     private openDrivePopup(target: 'left' | 'right'): void {
-        this.drivePopup.open(target, this.settings);
+        const otherPane = target === 'left' ? this.right : this.left;
+        this.drivePopup.open(target, this.settings, otherPane.cwd);
         this.drivePopup.setConfirmAction(() => {
             const selected = this.drivePopup.selectedEntry;
             if (!selected) return undefined;
@@ -1021,7 +1080,7 @@ export class Panel {
         const out: string[] = [];
         const leftIsActive = this.activePane === 'left';
 
-        out.push(resetStyle() + bgRgb(t.border.idle.bg));
+        out.push(resetStyle() + bgColor(t.border.idle.bg));
         out.push(clearScreen());
 
         if (this.quickViewMode) {
@@ -1061,7 +1120,10 @@ export class Panel {
 
         const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
 
-        if (this.menuPopup.active) {
+        if (this.colorEditorPopup.active) {
+            out.push(this.colorEditorPopup.render(this.rows, this.cols, t));
+            out.push(this.colorEditorPopup.renderShadow(cellAt));
+        } else if (this.menuPopup.active) {
             out.push(this.menuPopup.render(layout.topRow, 1, t, this.cols));
         } else if (this.searchPopup.active) {
             const activePaneGeo = this.quickViewMode

@@ -1,7 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import {
-    resetStyle, moveTo, DBOX, MBOX, BOX, bgRgb
+    resetStyle, moveTo, DBOX, MBOX, BOX, bgColor
 } from './draw';
 import { PanelSettings, Theme } from './settings';
 import { DirEntry, PaneGeometry, Layout, PaneRenderContext, SortMode } from './types';
@@ -249,7 +249,7 @@ export class Pane {
         const { geo, layout, theme: t, isActive, selected } = ctx;
         const out: string[] = [];
         const { listStart, listHeight } = layout;
-        const emptyBg = bgRgb(t.border.idle.bg);
+        const emptyBg = bgColor(t.border.idle.bg);
 
         for (let col = 0; col < geo.numCols; col++) {
             for (let row = 0; row < listHeight; row++) {

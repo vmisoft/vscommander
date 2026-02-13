@@ -12,6 +12,7 @@ export interface TableRow {
     detail: string;
     fixedCols?: string[];
     spanAll?: boolean;
+    numberLabel?: string;
 }
 
 export interface TableSection {
@@ -198,7 +199,7 @@ export class PopupTable {
         col += 1;
 
         if (this.numbered) {
-            const prefix = PopupTable.indexToPrefix(entryIdx);
+            const prefix = tableRow.numberLabel ?? PopupTable.indexToPrefix(entryIdx);
             fb.write(row, col, prefix, numStyle);
             col += 1;
             fb.write(row, col, ' ', textStyle);
@@ -263,7 +264,7 @@ export class PopupTable {
             fb.write(row, col, ' ', textStyle);
             col += 1;
             if (this.numbered) {
-                const prefix = PopupTable.indexToPrefix(entryIdx);
+                const prefix = tableRow.numberLabel ?? PopupTable.indexToPrefix(entryIdx);
                 fb.write(row, col, prefix, numStyle);
                 col += 1;
                 fb.write(row, col, ' ', textStyle);
@@ -280,7 +281,7 @@ export class PopupTable {
         } else {
             let text = ' ';
             if (this.numbered) {
-                text += PopupTable.indexToPrefix(entryIdx) + ' ';
+                text += (tableRow.numberLabel ?? PopupTable.indexToPrefix(entryIdx)) + ' ';
             }
             text += label;
             text = text.slice(0, contentRowWidth);

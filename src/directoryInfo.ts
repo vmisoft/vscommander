@@ -18,6 +18,7 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
     private spinnerFrame = 0;
     private scanning = false;
     private scanDirName = '';
+    private scanCurrentDir = '';
     private scanDirs = 0;
     private scanFiles = 0;
     private scanSize = 0;
@@ -26,6 +27,8 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
     private valueRanges: vscode.Range[] = [];
     private labelDecoration: vscode.TextEditorDecorationType;
     private valueDecoration: vscode.TextEditorDecorationType;
+    private editorListener: vscode.Disposable | undefined;
+    private pendingDecorations = false;
 
     constructor() {
         this.labelDecoration = vscode.window.createTextEditorDecorationType({
@@ -33,6 +36,11 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
         });
         this.valueDecoration = vscode.window.createTextEditorDecorationType({
             color: new vscode.ThemeColor('textLink.activeForeground'),
+        });
+        this.editorListener = vscode.window.onDidChangeVisibleTextEditors(() => {
+            if (this.pendingDecorations) {
+                this.applyDecorations();
+            }
         });
     }
 
@@ -73,6 +81,7 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
     }
 
     private async scanDir(dirPath: string, signal: AbortSignal): Promise<void> {
+        this.scanCurrentDir = dirPath;
         let entries: fs.Dirent[];
         try {
             entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
@@ -99,13 +108,19 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
         }
     }
 
+    private spinnerTick = 0;
+
     private startSpinner(): void {
+        this.spinnerTick = 0;
         this.spinnerTimer = setInterval(() => {
             if (this.scanning) {
-                this.spinnerFrame++;
+                this.spinnerTick++;
+                if (this.spinnerTick % 3 === 0) {
+                    this.spinnerFrame++;
+                }
                 this.rebuildContent();
             }
-        }, 150);
+        }, 50);
     }
 
     private stopSpinner(): void {
@@ -160,11 +175,16 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
             const spinner = SPINNER_FRAMES[this.spinnerFrame % SPINNER_FRAMES.length];
             const scanLine = '    ' + spinner + ' Scanning...';
             lines.push(scanLine);
+            const currentDir = '    (' + this.scanCurrentDir + ')';
+            lines.push(currentDir);
+            ln = lines.length - 1;
+            this.valueRanges.push(new vscode.Range(ln, 4, ln, 4 + currentDir.length - 4));
         }
 
         lines.push('');
         this.content = lines.join('\n');
         this.fireChange();
+        this.pendingDecorations = true;
         setTimeout(() => this.applyDecorations(), 50);
     }
 
@@ -174,7 +194,8 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
             if (editor.document.uri.toString() === uriStr) {
                 editor.setDecorations(this.labelDecoration, this.labelRanges);
                 editor.setDecorations(this.valueDecoration, this.valueRanges);
-                break;
+                this.pendingDecorations = false;
+                return;
             }
         }
     }
@@ -194,6 +215,7 @@ export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider
 
     dispose(): void {
         this.cancel();
+        this.editorListener?.dispose();
         this.labelDecoration.dispose();
         this.valueDecoration.dispose();
         this._onDidChange.dispose();

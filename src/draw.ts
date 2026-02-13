@@ -81,6 +81,23 @@ export function bgRgb(hex: string): string {
     return `${ESC}48;2;${r};${g};${b}m`;
 }
 
+// Color string that supports both hex ('ff0000') and ANSI index ('@0'-'@15', '@d' for default)
+export function fgColor(c: string): string {
+    if (c.charCodeAt(0) !== 0x40) return fgRgb(c); // not '@'
+    const idx = c.slice(1);
+    if (idx === 'd') return `${ESC}39m`;
+    const n = parseInt(idx, 10);
+    return n < 8 ? `${ESC}${30 + n}m` : `${ESC}${90 + n - 8}m`;
+}
+
+export function bgColor(c: string): string {
+    if (c.charCodeAt(0) !== 0x40) return bgRgb(c); // not '@'
+    const idx = c.slice(1);
+    if (idx === 'd') return `${ESC}49m`;
+    const n = parseInt(idx, 10);
+    return n < 8 ? `${ESC}${40 + n}m` : `${ESC}${100 + n - 8}m`;
+}
+
 // Box-drawing characters — single line (Unicode)
 export const BOX = {
     topLeft: '\u250c',

@@ -28,6 +28,8 @@ The project is a work in progress and not published to the marketplace yet.
 - **File selection**: Insert to toggle selection, batch operations on selected files
 - **Function key bar**: F3 View, F4 Edit, F5 Copy, F6 Move, F7 Mkdir, F8 Delete, F9 Config, F10 Quit
 - **Mouse support**: click to select files, switch panes, activate popup buttons, scroll with the wheel
+- **Color themes**: classic Far Manager theme or auto-adapting VS Code theme that matches your active color scheme
+- **Interactive color editor**: F9 > Options > Edit colors -- visual 16-color palette, hex input, live preview for all 39 theme elements
 - **Configurable key bindings**: remap any panel action to a different key via settings
 - **Cross-platform**: Linux, FreeBSD, macOS, and Windows
 
@@ -87,6 +89,7 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `vscommander.theme` | `"far"` | Color theme: `far` (classic) or `vscode` (matches active theme) |
 | `vscommander.showDotfiles` | `true` | Show hidden files (dotfiles) |
 | `vscommander.clock` | `true` | Show clock in the top-right corner |
 | `vscommander.panelColumns` | `2` | File columns per pane (1, 2, or 3) |

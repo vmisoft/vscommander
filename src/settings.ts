@@ -2,6 +2,7 @@ export interface TextStyle {
     fg: string;
     bg: string;
     bold: boolean;
+    dim?: boolean;
 }
 
 export interface RenderStyle {
@@ -115,6 +116,150 @@ export const DEFAULT_THEME: Theme = {
     selectedDir: rs(s(BRIGHT_YELLOW, DARK_BLUE, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
 };
 
+export type ThemeName = 'far' | 'vscode';
+
+// ANSI color indices — resolved by VS Code terminal to the active theme's terminal.ansi* tokens
+// @0=Black @1=Red @2=Green @3=Yellow @4=Blue @5=Magenta @6=Cyan @7=White
+// @8=BrightBlack @9=BrightRed @10=BrightGreen @11=BrightYellow @12=BrightBlue
+// @13=BrightMagenta @14=BrightCyan @15=BrightWhite @d=terminal default fg/bg
+const D = '@d';   // terminal default (editor.background / editor.foreground)
+const A0 = '@0';   // terminal.ansiBlack
+const A1 = '@1';   // terminal.ansiRed
+const A3 = '@3';   // terminal.ansiYellow
+const A4 = '@4';   // terminal.ansiBlue
+const A6 = '@6';   // terminal.ansiCyan
+const A7 = '@7';   // terminal.ansiWhite
+const A8 = '@8';   // terminal.ansiBrightBlack
+const A11 = '@11'; // terminal.ansiBrightYellow
+const A12 = '@12'; // terminal.ansiBrightBlue
+const A14 = '@14'; // terminal.ansiBrightCyan
+const A15 = '@15'; // terminal.ansiBrightWhite
+
+export const VSCODE_DARK_THEME: Theme = {
+    border: rs(s(A8, D)),
+    directory: rs(s(A12, D, true), s(A12, A7, true)),
+    file: rs(s(D, D), s(D, A7)),
+    hiddenDir: rs(s(A8, D, true), s(A8, A7, true)),
+    hiddenFile: rs(s(A8, D), s(A8, A7)),
+    activePath: rs(s(A0, A7, true)),
+    inactivePath: rs(s(D, D)),
+    header: rs(s(A14, D, true)),
+    info: rs(s(D, D)),
+    status: rs(s(D, D)),
+    commandLine: rs(s(D, D)),
+    commandLineBusy: rs(s(A3, D)),
+    clock: rs(s(A0, A7)),
+    fkeyNum: rs(s(A15, D)),
+    fkeyLabel: rs(s(A0, A8)),
+    searchBody: rs(s(A0, A7)),
+    searchInput: rs(s(D, A7)),
+    searchCursor: rs(s(A1, A7)),
+    driveBody: rs(s(A0, A7)),
+    driveLabel: rs(s(A11, A7, true), s(A11, A6, true)),
+    driveText: rs(s(A0, A7), s(A0, A6)),
+    driveNumber: rs(s(A11, A7, true), s(A11, A6, true)),
+    confirmBody: rs(s(A15, A1)),
+    confirmButton: rs(s(A15, A1, true), s(A0, A7, true)),
+    dialogBody: rs(s(A0, A7, true)),
+    dialogInput: rs(s(A0, A6, true)),
+    dialogInputCursor: rs(s(A1, A6, true)),
+    dialogLabel: rs(s(A0, A7, true)),
+    dialogButton: rs(s(A0, A7, true), s(A0, A6, true)),
+    dialogDropdown: rs(s(A15, A0, true), s(A0, A7, true)),
+    dialogHotkey: rs(s(A3, A7, true), s(A3, A6, true)),
+    menuBar: rs(s(A0, A6), s(A0, A7)),
+    menuBarHotkey: rs(s(A3, A6), s(A3, A7)),
+    menuItem: rs(s(A0, A7), s(A0, A6)),
+    menuItemHotkey: rs(s(A3, A7), s(A3, A6)),
+    menuItemDisabled: rs(s(A8, A7)),
+    menuBorder: rs(s(A0, A7)),
+    selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
+    selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
+};
+
+export const VSCODE_LIGHT_THEME: Theme = {
+    border: rs(s(A7, D)),
+    directory: rs(s(A4, D, true), s(A4, A7, true)),
+    file: rs(s(D, D), s(D, A7)),
+    hiddenDir: rs(s(A7, D, true), s(A7, A7, true)),
+    hiddenFile: rs(s(A7, D), s(A7, A7)),
+    activePath: rs(s(A0, A7, true)),
+    inactivePath: rs(s(D, D)),
+    header: rs(s(A4, D, true)),
+    info: rs(s(D, D)),
+    status: rs(s(D, D)),
+    commandLine: rs(s(D, D)),
+    commandLineBusy: rs(s(A3, D)),
+    clock: rs(s(A15, A7)),
+    fkeyNum: rs(s(D, D)),
+    fkeyLabel: rs(s(D, A7)),
+    searchBody: rs(s(A0, A15)),
+    searchInput: rs(s(A0, A7)),
+    searchCursor: rs(s(A1, A7)),
+    driveBody: rs(s(A0, A7)),
+    driveLabel: rs(s(A3, A7, true), s(A3, A14, true)),
+    driveText: rs(s(A0, A7), s(A0, A14)),
+    driveNumber: rs(s(A3, A7, true), s(A3, A14, true)),
+    confirmBody: rs(s(A15, A1)),
+    confirmButton: rs(s(A15, A1, true), s(A0, A15, true)),
+    dialogBody: rs(s(A0, A15, true)),
+    dialogInput: rs(s(A0, A14, true)),
+    dialogInputCursor: rs(s(A1, A14, true)),
+    dialogLabel: rs(s(A0, A15, true)),
+    dialogButton: rs(s(A0, A15, true), s(A0, A14, true)),
+    dialogDropdown: rs(s(A0, A15, true), s(A15, A0, true)),
+    dialogHotkey: rs(s(A3, A15, true), s(A3, A14, true)),
+    menuBar: rs(s(A0, A14), s(A0, A15)),
+    menuBarHotkey: rs(s(A3, A14), s(A3, A15)),
+    menuItem: rs(s(A0, A15), s(A0, A14)),
+    menuItemHotkey: rs(s(A3, A15), s(A3, A14)),
+    menuItemDisabled: rs(s(A8, A15)),
+    menuBorder: rs(s(A0, A15)),
+    selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
+    selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
+};
+
+// vscodeThemeKind: 1=Light, 2=Dark, 3=HighContrast, 4=HighContrastLight
+export function resolveTheme(name: ThemeName, vscodeThemeKind: number): Theme {
+    if (name === 'far') return DEFAULT_THEME;
+    return (vscodeThemeKind === 1 || vscodeThemeKind === 4)
+        ? VSCODE_LIGHT_THEME : VSCODE_DARK_THEME;
+}
+
+export interface ColorOverride {
+    fg?: string;
+    bg?: string;
+    bold?: boolean;
+    selectedFg?: string;
+    selectedBg?: string;
+    selectedBold?: boolean;
+}
+
+export function applyColorOverrides(base: Theme, overrides: Record<string, ColorOverride>): Theme {
+    const result: Record<string, RenderStyle> = {};
+    for (const key of Object.keys(base) as (keyof Theme)[]) {
+        const bs = base[key];
+        const o = overrides[key];
+        if (!o || Object.keys(o).length === 0) {
+            result[key] = bs;
+            continue;
+        }
+        result[key] = {
+            idle: {
+                fg: o.fg ?? bs.idle.fg,
+                bg: o.bg ?? bs.idle.bg,
+                bold: o.bold ?? bs.idle.bold,
+            },
+            selected: {
+                fg: o.selectedFg ?? o.fg ?? bs.selected.fg,
+                bg: o.selectedBg ?? o.bg ?? bs.selected.bg,
+                bold: o.selectedBold ?? o.bold ?? bs.selected.bold,
+            },
+        };
+    }
+    return result as unknown as Theme;
+}
+
 export interface KeyBindings {
     view: string;
     edit: string;
@@ -221,6 +366,9 @@ export interface PanelSettings {
     sortDirsFirst: boolean;
     panelColumns: number;
     theme: Theme;
+    baseTheme: Theme;
+    themeName: ThemeName;
+    colorOverrides: Record<string, ColorOverride>;
     workspaceDirs: string[];
     toggleKey: string;
     keys: KeyBindings;
@@ -232,6 +380,9 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     sortDirsFirst: true,
     panelColumns: 2,
     theme: DEFAULT_THEME,
+    baseTheme: DEFAULT_THEME,
+    themeName: 'far',
+    colorOverrides: {},
     workspaceDirs: [],
     toggleKey: 'Ctrl+O',
     keys: DEFAULT_KEY_BINDINGS,
@@ -244,3 +395,34 @@ export function mergeSettings(overrides: Partial<PanelSettings>): PanelSettings 
         keys: { ...DEFAULT_KEY_BINDINGS, ...(overrides.keys || {}) },
     };
 }
+
+export function themeToOverrides(theme: Theme): Record<string, ColorOverride> {
+    const result: Record<string, ColorOverride> = {};
+    for (const key of Object.keys(theme) as (keyof Theme)[]) {
+        const rs = theme[key];
+        result[key] = {
+            fg: rs.idle.fg,
+            bg: rs.idle.bg,
+            bold: rs.idle.bold,
+            selectedFg: rs.selected.fg,
+            selectedBg: rs.selected.bg,
+            selectedBold: rs.selected.bold,
+        };
+    }
+    return result;
+}
+
+export const THEME_KEYS: (keyof Theme)[] = [
+    'border', 'directory', 'file', 'hiddenDir', 'hiddenFile',
+    'activePath', 'inactivePath', 'header', 'info', 'status',
+    'commandLine', 'commandLineBusy', 'clock',
+    'fkeyNum', 'fkeyLabel',
+    'searchBody', 'searchInput', 'searchCursor',
+    'driveBody', 'driveLabel', 'driveText', 'driveNumber',
+    'confirmBody', 'confirmButton',
+    'dialogBody', 'dialogInput', 'dialogInputCursor', 'dialogLabel',
+    'dialogButton', 'dialogDropdown', 'dialogHotkey',
+    'menuBar', 'menuBarHotkey', 'menuItem', 'menuItemHotkey',
+    'menuItemDisabled', 'menuBorder',
+    'selectedFile', 'selectedDir',
+];

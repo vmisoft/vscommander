@@ -38,7 +38,10 @@ export type MenuCommand =
     | { type: 'delete' }
     | { type: 'swapPanels' }
     | { type: 'panelsOnOff' }
-    | { type: 'openSettings' };
+    | { type: 'openSettings' }
+    | { type: 'editColors' }
+    | { type: 'copyThemeColors' }
+    | { type: 'resetColors' };
 
 export class MenuPopup extends Popup {
     private menus: MenuBarEntry[] = [];
@@ -54,12 +57,13 @@ export class MenuPopup extends Popup {
 
     openMenu(settings: PanelSettings, activePane: 'left' | 'right',
              leftSort: SortMode, rightSort: SortMode,
-             leftCols: number, rightCols: number): void {
+             leftCols: number, rightCols: number,
+             hasOverrides: boolean = false): void {
         super.open();
         this.dropdownOpen = false;
         this.selectedMenu = 0;
         this.selectedItem = 0;
-        this.buildMenus(settings, activePane, leftSort, rightSort, leftCols, rightCols);
+        this.buildMenus(settings, activePane, leftSort, rightSort, leftCols, rightCols, hasOverrides);
     }
 
     close(): void {
@@ -69,7 +73,8 @@ export class MenuPopup extends Popup {
 
     private buildMenus(settings: PanelSettings, _activePane: 'left' | 'right',
                         leftSort: SortMode, rightSort: SortMode,
-                        leftCols: number, rightCols: number): void {
+                        leftCols: number, rightCols: number,
+                        hasOverrides: boolean = false): void {
         this.menus = [];
         this.dropdowns = [];
 
@@ -85,7 +90,7 @@ export class MenuPopup extends Popup {
         this.dropdowns.push(this.buildPaneMenu('left', leftSort, leftCols, settings));
         this.dropdowns.push(this.buildFilesMenu());
         this.dropdowns.push(this.buildCommandsMenu());
-        this.dropdowns.push(this.buildOptionsMenu());
+        this.dropdowns.push(this.buildOptionsMenu(hasOverrides));
         this.dropdowns.push(this.buildPaneMenu('right', rightSort, rightCols, settings));
     }
 
@@ -125,9 +130,13 @@ export class MenuPopup extends Popup {
         ];
     }
 
-    private buildOptionsMenu(): DropdownItem[] {
+    private buildOptionsMenu(hasOverrides: boolean): DropdownItem[] {
         return [
             { type: 'item', label: 'Panel settings', command: 'open-settings' },
+            { type: 'separator' },
+            { type: 'item', label: 'Edit colors', hotkeyIndex: 5, command: 'edit-colors' },
+            { type: 'item', label: 'Copy theme colors', hotkeyIndex: 0, command: 'copy-theme-colors' },
+            { type: 'item', label: 'Reset colors', hotkeyIndex: 0, command: 'reset-colors', disabled: !hasOverrides },
         ];
     }
 
@@ -266,6 +275,9 @@ export class MenuPopup extends Popup {
             case 'swap-panels': return { type: 'swapPanels' };
             case 'panels-onoff': return { type: 'panelsOnOff' };
             case 'open-settings': return { type: 'openSettings' };
+            case 'edit-colors': return { type: 'editColors' };
+            case 'copy-theme-colors': return { type: 'copyThemeColors' };
+            case 'reset-colors': return { type: 'resetColors' };
         }
         return undefined;
     }
@@ -412,8 +424,8 @@ export class MenuPopup extends Popup {
         fb.write(boxHeight - 1, 0, DBOX.bottomLeft + DBOX.horizontal.repeat(innerWidth) + DBOX.bottomRight, borderStyle);
 
         let row = 1;
-        let itemIdx = 0;
-        for (const item of items) {
+        for (let itemIdx = 0; itemIdx < items.length; itemIdx++) {
+            const item = items[itemIdx];
             if (item.type === 'separator') {
                 fb.write(row, 0, MBOX.vertDoubleRight + BOX.horizontal.repeat(innerWidth) + MBOX.vertDoubleLeft, borderStyle);
                 row++;
@@ -448,7 +460,6 @@ export class MenuPopup extends Popup {
             }
 
             row++;
-            itemIdx++;
         }
 
         return fb;

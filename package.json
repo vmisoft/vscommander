@@ -115,6 +115,12 @@
         "when": "terminalFocus && vscommander.panelVisible"
       },
       {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u0015" },
+        "key": "ctrl+u",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
         "command": "vscommander.quickView",
         "key": "ctrl+q",
         "when": "vscommander.panelVisible"

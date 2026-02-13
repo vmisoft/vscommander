@@ -39,9 +39,13 @@ export type MenuCommand =
     | { type: 'swapPanels' }
     | { type: 'panelsOnOff' }
     | { type: 'openSettings' }
+    | { type: 'changeTheme' }
     | { type: 'editColors' }
     | { type: 'copyThemeColors' }
-    | { type: 'resetColors' };
+    | { type: 'resetColors' }
+    | { type: 'saveSettings' }
+    | { type: 'deleteSettings' }
+    | { type: 'resetAllSettings' };
 
 export class MenuPopup extends Popup {
     private menus: MenuBarEntry[] = [];
@@ -132,8 +136,12 @@ export class MenuPopup extends Popup {
 
     private buildOptionsMenu(hasOverrides: boolean): DropdownItem[] {
         return [
-            { type: 'item', label: 'Panel settings', command: 'open-settings' },
+            { type: 'item', label: 'All settings', hotkeyIndex: 0, command: 'open-settings' },
+            { type: 'item', label: 'Save settings', hotkeyIndex: 0, command: 'save-settings' },
+            { type: 'item', label: 'Delete settings', hotkeyIndex: 0, command: 'delete-settings' },
+            { type: 'item', label: 'Reset settings', hotkeyIndex: 0, command: 'reset-all-settings' },
             { type: 'separator' },
+            { type: 'item', label: 'Change theme', hotkeyIndex: 7, command: 'change-theme' },
             { type: 'item', label: 'Edit colors', hotkeyIndex: 5, command: 'edit-colors' },
             { type: 'item', label: 'Copy theme colors', hotkeyIndex: 0, command: 'copy-theme-colors' },
             { type: 'item', label: 'Reset colors', hotkeyIndex: 0, command: 'reset-colors', disabled: !hasOverrides },
@@ -275,9 +283,13 @@ export class MenuPopup extends Popup {
             case 'swap-panels': return { type: 'swapPanels' };
             case 'panels-onoff': return { type: 'panelsOnOff' };
             case 'open-settings': return { type: 'openSettings' };
+            case 'change-theme': return { type: 'changeTheme' };
             case 'edit-colors': return { type: 'editColors' };
             case 'copy-theme-colors': return { type: 'copyThemeColors' };
             case 'reset-colors': return { type: 'resetColors' };
+            case 'save-settings': return { type: 'saveSettings' };
+            case 'delete-settings': return { type: 'deleteSettings' };
+            case 'reset-all-settings': return { type: 'resetAllSettings' };
         }
         return undefined;
     }

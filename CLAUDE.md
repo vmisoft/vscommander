@@ -96,6 +96,12 @@ This extension must work on **Linux, FreeBSD, macOS, and Windows**. Every change
 - Keep `shell.ts` with no knowledge of VS Code APIs
 - Only `extension.ts` and `directoryInfo.ts` may import `vscode`
 
+### Settings Persistence (MANDATORY)
+
+All panel settings changes (theme, colors, display options) are IN MEMORY by default.
+Settings only persist to VS Code configuration when the user explicitly uses
+F9 > Options > Save settings. Never auto-persist settings changes.
+
 ### Terminal Rendering
 
 - All drawing uses absolute cursor positioning (`moveTo(row, col)`)

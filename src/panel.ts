@@ -5,7 +5,7 @@ import {
     resetStyle, bgColor, enableMouse, disableMouse
 } from './draw';
 import { MouseEvent, parseMouseEvent } from './mouse';
-import { PanelSettings, TextStyle, matchesKeyBinding } from './settings';
+import { PanelSettings, TextStyle, matchesKeyBinding, resolveTheme } from './settings';
 import { Layout, PaneGeometry } from './types';
 import { computeLayout } from './helpers';
 import { Pane } from './pane';
@@ -17,7 +17,8 @@ import { MkdirPopup } from './mkdirPopup';
 import { MenuPopup, MenuCommand } from './menuPopup';
 import { CopyMovePopup, CopyMoveMode, CopyMoveResult } from './copyMovePopup';
 import { ColorEditorPopup } from './colorEditorPopup';
-import { ColorOverride } from './settings';
+import { ThemePopup } from './themePopup';
+import { ColorOverride, ThemeName, applyColorOverrides, themeToOverrides, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS } from './settings';
 import { TerminalBuffer } from './terminalBuffer';
 import { getCellAt } from './cellQuery';
 import { TerminalArea } from './terminalArea';
@@ -40,9 +41,9 @@ export type PanelInputResult =
     | { action: 'copyMove'; result: CopyMoveResult }
     | { action: 'quickView'; data: string; filePath: string; targetType: 'file' | 'dir'; side: 'left' | 'right' }
     | { action: 'quickViewClose'; data: string; chdir?: string }
-    | { action: 'saveColors'; overrides: Record<string, ColorOverride> }
-    | { action: 'copyThemeColors' }
-    | { action: 'resetColors' }
+    | { action: 'changeTheme'; themeName: ThemeName }
+    | { action: 'saveSettings'; scope: 'user' | 'workspace' }
+    | { action: 'deleteSettings'; scope: 'user' | 'workspace' }
     | { action: 'none' };
 
 export class Panel {
@@ -60,6 +61,7 @@ export class Panel {
     menuPopup: MenuPopup;
     copyMovePopup: CopyMovePopup;
     colorEditorPopup: ColorEditorPopup;
+    themePopup: ThemePopup;
     termBuffer: TerminalBuffer;
     private terminalArea = new TerminalArea();
     private fkeyBar = new FKeyBar();
@@ -93,6 +95,7 @@ export class Panel {
         this.menuPopup = new MenuPopup();
         this.copyMovePopup = new CopyMovePopup();
         this.colorEditorPopup = new ColorEditorPopup();
+        this.themePopup = new ThemePopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
         this.syncPopupBounds();
     }
@@ -128,7 +131,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.colorEditorPopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.colorEditorPopup, this.themePopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -161,10 +164,11 @@ export class Panel {
         return this.searchPopup.active || this.drivePopup.active
             || this.confirmPopup.active || this.mkdirPopup.active
             || this.menuPopup.active || this.copyMovePopup.active
-            || this.colorEditorPopup.active;
+            || this.colorEditorPopup.active || this.themePopup.active;
     }
 
     private get activePopupObj(): Popup | null {
+        if (this.themePopup.active) return this.themePopup;
         if (this.colorEditorPopup.active) return this.colorEditorPopup;
         if (this.confirmPopup.active) return this.confirmPopup;
         if (this.copyMovePopup.active) return this.copyMovePopup;
@@ -300,6 +304,10 @@ export class Panel {
                 return this.handleMouse(mouse, layout, activePaneGeo);
             }
             return { action: 'none' };
+        }
+
+        if (this.themePopup.active) {
+            return this.resolveThemePopupResult(this.themePopup.handleInput(data));
         }
 
         if (this.colorEditorPopup.active) {
@@ -715,6 +723,7 @@ export class Panel {
         const popup = this.activePopupObj;
 
         const resolvePopup = (result: PopupInputResult): PanelInputResult => {
+            if (popup === this.themePopup) return this.resolveThemePopupResult(result);
             if (popup === this.colorEditorPopup) return this.resolveColorEditorResult(result);
             if (popup === this.menuPopup) return this.resolveMenuResult(result);
             if (popup === this.copyMovePopup) return this.resolveCopyMoveResult(result);
@@ -799,7 +808,51 @@ export class Panel {
     private resolveColorEditorResult(result: PopupInputResult): PanelInputResult {
         if (result.action === 'close' && result.confirm) {
             const overrides = this.colorEditorPopup.getOverrides();
-            return { action: 'saveColors', overrides };
+            this.settings.colorOverrides = overrides;
+            this.settings.theme = applyColorOverrides(this.settings.baseTheme, overrides);
+            this.left.refresh(this.settings);
+            this.right.refresh(this.settings);
+            return { action: 'redraw', data: this.render() };
+        }
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private resolveThemePopupResult(result: PopupInputResult): PanelInputResult {
+        if (result.action === 'close' && result.confirm) {
+            const themeName = this.themePopup.getSelectedThemeName();
+            const resultAction = this.themePopup.getResultAction();
+            if (resultAction === 'edit') {
+                const baseTheme = resolveTheme(themeName, this.settings.vscodeThemeKind);
+                this.colorEditorPopup.openWith(baseTheme, this.settings.colorOverrides);
+                this.colorEditorPopup.setConfirmAction(() => {
+                    const overrides = this.colorEditorPopup.getOverrides();
+                    this.settings.colorOverrides = overrides;
+                    this.settings.theme = applyColorOverrides(this.settings.baseTheme, overrides);
+                    this.left.refresh(this.settings);
+                    this.right.refresh(this.settings);
+                    return { action: 'redraw' };
+                });
+                return { action: 'changeTheme', themeName };
+            }
+            if (resultAction === 'reset') {
+                this.confirmPopup.openWith({
+                    title: 'Reset colors',
+                    bodyLines: ['Reset all color overrides to defaults?'],
+                    buttons: ['Reset', 'Cancel'],
+                    warning: true,
+                    onConfirm: (btnIdx) => {
+                        if (btnIdx === 0) {
+                            this.settings.colorOverrides = {};
+                            this.settings.theme = this.settings.baseTheme;
+                            this.left.refresh(this.settings);
+                            this.right.refresh(this.settings);
+                            return { action: 'redraw' };
+                        }
+                    },
+                });
+                return { action: 'changeTheme', themeName };
+            }
+            return { action: 'changeTheme', themeName };
         }
         return { action: 'redraw', data: this.render() };
     }
@@ -884,22 +937,120 @@ export class Panel {
             case 'openSettings': {
                 return { action: 'openSettings' };
             }
+            case 'changeTheme': {
+                this.themePopup.openWith(this.settings.themeName, this.settings.vscodeThemeKind, this.settings.colorOverrides);
+                return { action: 'redraw', data: this.render() };
+            }
             case 'editColors': {
                 this.colorEditorPopup.openWith(this.settings.baseTheme, this.settings.colorOverrides);
                 this.colorEditorPopup.setConfirmAction(() => {
-                    return { action: 'saveColors', overrides: this.colorEditorPopup.getOverrides() };
+                    const overrides = this.colorEditorPopup.getOverrides();
+                    this.settings.colorOverrides = overrides;
+                    this.settings.theme = applyColorOverrides(this.settings.baseTheme, overrides);
+                    this.left.refresh(this.settings);
+                    this.right.refresh(this.settings);
+                    return { action: 'redraw' };
                 });
                 return { action: 'redraw', data: this.render() };
             }
             case 'copyThemeColors': {
-                return { action: 'copyThemeColors' };
+                this.settings.colorOverrides = themeToOverrides(this.settings.theme);
+                return { action: 'redraw', data: this.render() };
             }
             case 'resetColors': {
-                return { action: 'resetColors' };
+                this.settings.colorOverrides = {};
+                this.settings.theme = this.settings.baseTheme;
+                this.left.refresh(this.settings);
+                this.right.refresh(this.settings);
+                return { action: 'redraw', data: this.render() };
+            }
+            case 'saveSettings': {
+                return this.openSaveSettingsPopup();
+            }
+            case 'deleteSettings': {
+                return this.openDeleteSettingsPopup();
+            }
+            case 'resetAllSettings': {
+                return this.openResetAllSettingsPopup();
             }
             default:
                 return { action: 'redraw', data: this.render() };
         }
+    }
+
+    private openSaveSettingsPopup(): PanelInputResult {
+        let userLabel = this.settings.remoteName
+            ? 'Remote: ' + this.settings.remoteName
+            : 'User';
+        let wsLabel = 'Workspace';
+        if (!this.settings.settingsInScopes.user) userLabel += ' (new)';
+        if (!this.settings.settingsInScopes.workspace) wsLabel += ' (new)';
+        const buttons = [userLabel, wsLabel, 'Cancel'];
+        this.confirmPopup.openWith({
+            title: 'Save settings',
+            bodyLines: ['Save all current settings to:'],
+            buttons,
+            warning: false,
+            onConfirm: (btnIdx) => {
+                if (btnIdx === 0) return { action: 'saveSettings', scope: 'user' };
+                if (btnIdx === 1) return { action: 'saveSettings', scope: 'workspace' };
+                return undefined;
+            },
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openDeleteSettingsPopup(): PanelInputResult {
+        const userLabel = this.settings.remoteName
+            ? 'Remote: ' + this.settings.remoteName
+            : 'User';
+        const buttons = [userLabel, 'Workspace', 'Cancel'];
+        const disabledButtons: number[] = [];
+        if (!this.settings.settingsInScopes.user) disabledButtons.push(0);
+        if (!this.settings.settingsInScopes.workspace) disabledButtons.push(1);
+        this.confirmPopup.openWith({
+            title: 'Delete settings',
+            bodyLines: ['Delete persisted settings from:'],
+            buttons,
+            disabledButtons,
+            warning: false,
+            onConfirm: (btnIdx) => {
+                if (btnIdx === 0) return { action: 'deleteSettings', scope: 'user' };
+                if (btnIdx === 1) return { action: 'deleteSettings', scope: 'workspace' };
+                return undefined;
+            },
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openResetAllSettingsPopup(): PanelInputResult {
+        this.confirmPopup.openWith({
+            title: 'Reset settings',
+            bodyLines: [
+                'Reset all settings to defaults?',
+                'This affects the current session only.',
+                'Use *Save settings* to persist.',
+            ],
+            buttons: ['Reset', 'Cancel'],
+            warning: true,
+            onConfirm: (btnIdx) => {
+                if (btnIdx === 0) {
+                    const baseTheme = resolveTheme(DEFAULT_SETTINGS.themeName, this.settings.vscodeThemeKind);
+                    this.settings.themeName = DEFAULT_SETTINGS.themeName;
+                    this.settings.baseTheme = baseTheme;
+                    this.settings.theme = baseTheme;
+                    this.settings.colorOverrides = {};
+                    this.settings.showDotfiles = DEFAULT_SETTINGS.showDotfiles;
+                    this.settings.clockEnabled = DEFAULT_SETTINGS.clockEnabled;
+                    this.settings.panelColumns = DEFAULT_SETTINGS.panelColumns;
+                    this.settings.keys = { ...DEFAULT_KEY_BINDINGS };
+                    this.left.refresh(this.settings);
+                    this.right.refresh(this.settings);
+                    return { action: 'redraw' };
+                }
+            },
+        });
+        return { action: 'redraw', data: this.render() };
     }
 
     private openDrivePopup(target: 'left' | 'right'): void {
@@ -1120,7 +1271,9 @@ export class Panel {
 
         const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
 
-        if (this.colorEditorPopup.active) {
+        if (this.themePopup.active) {
+            out.push(this.themePopup.render(this.rows, this.cols, t));
+        } else if (this.colorEditorPopup.active) {
             out.push(this.colorEditorPopup.render(this.rows, this.cols, t));
             out.push(this.colorEditorPopup.renderShadow(cellAt));
         } else if (this.menuPopup.active) {

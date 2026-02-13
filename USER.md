@@ -240,7 +240,11 @@ Active options show a checkmark. Column count and sort mode are per-pane.
 
 | Item | Description |
 |------|-------------|
-| Panel settings | Open VS Code settings filtered to VSCommander |
+| All settings | Open VS Code settings filtered to VSCommander |
+| Save settings | Persist all current in-memory settings to a chosen scope (User, Workspace, or Remote) |
+| Delete settings | Remove persisted VSCommander settings from a chosen scope |
+| Reset settings | Reset all in-memory settings to defaults for the current session (use Save settings to persist) |
+| Change theme | Open the theme selection popup with live preview |
 | Edit colors | Open the interactive color editor (see below) |
 | Copy theme colors | Snapshot all current theme colors as explicit overrides |
 | Reset colors | Remove all color overrides (disabled when no overrides exist) |
@@ -342,7 +346,16 @@ Configure VSCommander in VS Code settings (`Ctrl+,` / `Cmd+,`):
 | `vscommander.clock` | boolean | `true` | Show clock (HH:MM) in the top-right corner |
 | `vscommander.panelColumns` | number | `2` | Number of file columns per panel (1, 2, or 3) |
 
-Settings are read each time the panel is opened. The `Ctrl+H` toggle overrides `showDotfiles` for the current session only.
+Settings are read from VS Code configuration when the panel is first opened. After that, all changes you make through the panel (theme, colors, dotfile visibility, etc.) are **in-memory only** -- they take effect immediately but do not survive a restart.
+
+### Saving and Deleting Settings
+
+To persist your current settings, use **F9 > Options > Save settings**. A popup lets you choose the scope:
+
+- **User** -- saves to your global VS Code settings (available everywhere). When connected to a remote (SSH, WSL, etc.), this button shows as **Remote: \<name\>** and saves to the remote host's user settings.
+- **Workspace** -- saves to the current workspace's `.vscode/settings.json`
+
+To remove persisted settings, use **F9 > Options > Delete settings**. Scopes that have no VSCommander settings are shown as disabled (grayed out). Deleting settings from a scope removes all `vscommander.*` keys from that scope; your current in-memory settings remain active for the rest of the session.
 
 ### Color Theme
 
@@ -352,6 +365,17 @@ The `vscommander.theme` setting controls the panel's color scheme:
 - **`"vscode"`**: Colors that match the active VS Code color theme. Uses ANSI standard color indices that VS Code's terminal resolves to the current theme's `terminal.ansi*` color tokens. Automatically adapts when you switch between dark and light themes, and works with any installed color theme (Dark+, Light+, Monokai, Solarized, etc.).
 
 The panel redraws instantly when you change the setting or switch VS Code themes.
+
+### Change Theme Popup
+
+Open from **F9 > Options > Change theme**. The popup shows the available themes in a list on the left, with a live preview on the right. The preview displays a mock file panel, command line, function key bar, copy dialog, and a confirm dialog -- all rendered with the selected theme's colors. Use Up/Down to browse themes and see the preview update instantly.
+
+The popup has four buttons:
+
+- **OK** -- apply the selected theme and close
+- **Edit** -- apply the selected theme and open the interactive color editor for fine-tuning
+- **Reset** -- apply the selected theme and reset all color overrides to defaults (with confirmation)
+- **Cancel** -- discard changes and close
 
 ### Color Overrides
 
@@ -400,9 +424,9 @@ Open from **F9 > Options > Edit colors**. The color editor popup shows all 39 th
 
 **Sample preview**: Shows "Sample text" rendered with the current foreground, background, and bold settings, updating as you make changes.
 
-Press **OK** to save all changes to VS Code settings. Press **Cancel** or **Escape** to discard.
+Press **OK** to apply all changes in memory. Press **Cancel** or **Escape** to discard. To persist color changes across restarts, use **F9 > Options > Save settings**.
 
-**Copy theme colors** (F9 > Options) writes every current color as an explicit override, creating a snapshot you can then customize incrementally. **Reset colors** clears all overrides, returning to the base theme.
+**Copy theme colors** (F9 > Options) writes every current color as an explicit in-memory override, creating a snapshot you can then customize incrementally. **Reset colors** clears all overrides, returning to the base theme. Both operations are in-memory only; use **Save settings** to persist.
 
 ### Key Binding Settings
 

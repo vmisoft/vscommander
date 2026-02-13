@@ -3,13 +3,37 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnShell, ShellProxy } from './shell';
 import { Panel } from './panel';
-import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings, resolveTheme, ThemeName, ColorOverride, applyColorOverrides, themeToOverrides, THEME_KEYS } from './settings';
+import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings, resolveTheme, ThemeName, ColorOverride, applyColorOverrides, THEME_KEYS } from './settings';
 import { CopyMoveResult } from './copyMovePopup';
 import { DirectoryInfoProvider } from './directoryInfo';
 import { BlinkTimer, PollTimer } from './timerManager';
 import { makeDirectories, copyMoveOne } from './fileOps';
 import { ShellRouter } from './shellRouter';
 import { QuickViewController, QuickViewHost } from './quickView';
+
+const ALL_VSCOMMANDER_KEYS = [
+    'theme', 'showDotfiles', 'clock', 'panelColumns',
+    'keyView', 'keyEdit', 'keyCopy', 'keyMove', 'keyMkdir', 'keyDelete',
+    'keyForceDelete', 'keyQuit', 'keyMenu', 'keyDriveLeft', 'keyDriveRight',
+    'keyToggleDotfiles', 'keyTogglePane', 'keyDetach', 'keyResizeLeft',
+    'keyResizeRight', 'keyQuickView',
+];
+
+function hasSettingsInScope(scope: 'user' | 'workspace'): boolean {
+    const cfg = vscode.workspace.getConfiguration('vscommander');
+    const colorsCfg = vscode.workspace.getConfiguration('vscommander.colors');
+    for (const key of ALL_VSCOMMANDER_KEYS) {
+        const val = cfg.inspect(key);
+        if (scope === 'user' && val?.globalValue !== undefined) return true;
+        if (scope === 'workspace' && val?.workspaceValue !== undefined) return true;
+    }
+    for (const key of THEME_KEYS) {
+        const val = colorsCfg.inspect(key);
+        if (scope === 'user' && val?.globalValue !== undefined) return true;
+        if (scope === 'workspace' && val?.workspaceValue !== undefined) return true;
+    }
+    return false;
+}
 
 function readSettings(): PanelSettings {
     const cfg = vscode.workspace.getConfiguration('vscommander');
@@ -39,6 +63,12 @@ function readSettings(): PanelSettings {
         baseTheme,
         themeName,
         colorOverrides: overrides,
+        vscodeThemeKind: vscode.window.activeColorTheme.kind,
+        remoteName: vscode.env.remoteName || '',
+        settingsInScopes: {
+            user: hasSettingsInScope('user'),
+            workspace: hasSettingsInScope('workspace'),
+        },
         keys: {
             view: cfg.get<string>('keyView', DEFAULT_KEY_BINDINGS.view),
             edit: cfg.get<string>('keyEdit', DEFAULT_KEY_BINDINGS.edit),
@@ -91,6 +121,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private pendingChdir: string | undefined;
     private themeListener: vscode.Disposable | undefined;
     private configListener: vscode.Disposable | undefined;
+    private suppressConfigReload = false;
 
     constructor(cwd: string) {
         this.cwd = cwd;
@@ -180,10 +211,27 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         });
 
         this.themeListener = vscode.window.onDidChangeActiveColorTheme(() => {
-            this.reloadSettingsAndRedraw();
+            if (!this.panel) return;
+            this.panel.settings.vscodeThemeKind = vscode.window.activeColorTheme.kind;
+            if (this.panel.settings.themeName === 'vscode') {
+                const base = resolveTheme('vscode', vscode.window.activeColorTheme.kind);
+                this.panel.settings.baseTheme = base;
+                let theme = base;
+                const ov = this.panel.settings.colorOverrides;
+                if (Object.keys(ov).length > 0) {
+                    theme = applyColorOverrides(base, ov);
+                }
+                this.panel.settings.theme = theme;
+                if (this.panel.visible) {
+                    this.panel.left.refresh(this.panel.settings);
+                    this.panel.right.refresh(this.panel.settings);
+                    this.writeEmitter.fire(this.panel.redraw());
+                }
+            }
         });
 
         this.configListener = vscode.workspace.onDidChangeConfiguration((e) => {
+            if (this.suppressConfigReload) return;
             if (e.affectsConfiguration('vscommander')) {
                 this.reloadSettingsAndRedraw();
             }
@@ -367,14 +415,26 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 case 'copyMove':
                     this.executeCopyMove(result.result);
                     break;
-                case 'saveColors':
-                    this.saveColorOverrides(result.overrides);
+                case 'changeTheme': {
+                    const newBase = resolveTheme(result.themeName, vscode.window.activeColorTheme.kind);
+                    let newTheme = newBase;
+                    const ov = this.panel.settings.colorOverrides;
+                    if (Object.keys(ov).length > 0) {
+                        newTheme = applyColorOverrides(newBase, ov);
+                    }
+                    this.panel.settings.themeName = result.themeName;
+                    this.panel.settings.baseTheme = newBase;
+                    this.panel.settings.theme = newTheme;
+                    this.panel.left.refresh(this.panel.settings);
+                    this.panel.right.refresh(this.panel.settings);
+                    this.writeEmitter.fire(this.panel.redraw());
                     break;
-                case 'copyThemeColors':
-                    this.copyThemeColors();
+                }
+                case 'saveSettings':
+                    this.saveAllSettings(result.scope);
                     break;
-                case 'resetColors':
-                    this.resetColorOverrides();
+                case 'deleteSettings':
+                    this.deleteAllSettings(result.scope);
                     break;
                 case 'quickView':
                     this.writeEmitter.fire(result.data);
@@ -499,7 +559,6 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     if (this.panel && this.panel.visible && this.panel.waitingMode) {
                         this.spinnerTimer.stop();
                         this.syncPaneCwd();
-                        this.panel.settings = readSettings();
                         this.panel.waitingMode = false;
                         this.panel.left.refresh(this.panel.settings);
                         this.panel.right.refresh(this.panel.settings);
@@ -507,14 +566,12 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                         this.restartCmdBlinkTimer();
                     } else if (this.panel && this.panel.visible && !this.panel.waitingMode) {
                         this.syncPaneCwd();
-                        this.panel.settings = readSettings();
                         this.panel.left.refresh(this.panel.settings);
                         this.panel.right.refresh(this.panel.settings);
                         this.writeEmitter.fire(this.panel.redraw());
                         this.restartCmdBlinkTimer();
                     } else if (this.panel && !this.panel.visible) {
                         this.syncPaneCwd();
-                        this.panel.settings = readSettings();
                         this.writeEmitter.fire(this.panel.show());
                         this.restartCmdBlinkTimer();
                         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', true);
@@ -553,7 +610,6 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 this.shellRouter.flush(s => this.writeEmitter.fire(s));
                 vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
             } else {
-                this.panel.settings = readSettings();
                 this.panel.waitingMode = true;
                 this.panel.spinnerFrame = 0;
                 this.writeEmitter.fire(this.panel.show());
@@ -574,7 +630,6 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
             } else {
                 const shellBusy = this.shell !== undefined && this.shell.pty.process !== this.shell.shellProcess;
-                this.panel.settings = readSettings();
                 if (shellBusy) {
                     this.panel.waitingMode = true;
                     this.panel.spinnerFrame = 0;
@@ -708,32 +763,68 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         );
     }
 
-    private async saveColorOverrides(overrides: Record<string, ColorOverride>): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('vscommander.colors');
+    private async saveAllSettings(scope: 'user' | 'workspace'): Promise<void> {
+        if (!this.panel) return;
+        const target = scope === 'user'
+            ? vscode.ConfigurationTarget.Global
+            : vscode.ConfigurationTarget.Workspace;
+        const s = this.panel.settings;
+        const cfg = vscode.workspace.getConfiguration('vscommander');
+        await cfg.update('theme', s.themeName, target);
+        await cfg.update('showDotfiles', s.showDotfiles, target);
+        await cfg.update('clock', s.clockEnabled, target);
+        await cfg.update('panelColumns', s.panelColumns, target);
+        await cfg.update('keyView', s.keys.view, target);
+        await cfg.update('keyEdit', s.keys.edit, target);
+        await cfg.update('keyCopy', s.keys.copy, target);
+        await cfg.update('keyMove', s.keys.move, target);
+        await cfg.update('keyMkdir', s.keys.mkdir, target);
+        await cfg.update('keyDelete', s.keys.delete, target);
+        await cfg.update('keyForceDelete', s.keys.forceDelete, target);
+        await cfg.update('keyQuit', s.keys.quit, target);
+        await cfg.update('keyMenu', s.keys.menu, target);
+        await cfg.update('keyDriveLeft', s.keys.driveLeft, target);
+        await cfg.update('keyDriveRight', s.keys.driveRight, target);
+        await cfg.update('keyToggleDotfiles', s.keys.toggleDotfiles, target);
+        await cfg.update('keyTogglePane', s.keys.togglePane, target);
+        await cfg.update('keyDetach', s.keys.detach, target);
+        await cfg.update('keyResizeLeft', s.keys.resizeLeft, target);
+        await cfg.update('keyResizeRight', s.keys.resizeRight, target);
+        await cfg.update('keyQuickView', s.keys.quickView, target);
+        const colorsCfg = vscode.workspace.getConfiguration('vscommander.colors');
         for (const key of THEME_KEYS) {
-            const value = overrides[key];
+            const value = s.colorOverrides[key];
             if (value && Object.keys(value).length > 0) {
-                await cfg.update(key, value, vscode.ConfigurationTarget.Global);
+                await colorsCfg.update(key, value, target);
             } else {
-                await cfg.update(key, undefined, vscode.ConfigurationTarget.Global);
+                await colorsCfg.update(key, undefined, target);
             }
         }
+        this.panel.settings.settingsInScopes = {
+            user: hasSettingsInScope('user'),
+            workspace: hasSettingsInScope('workspace'),
+        };
     }
 
-    private async copyThemeColors(): Promise<void> {
+    private async deleteAllSettings(scope: 'user' | 'workspace'): Promise<void> {
         if (!this.panel) return;
-        const all = themeToOverrides(this.panel.settings.theme);
-        const cfg = vscode.workspace.getConfiguration('vscommander.colors');
-        for (const [key, value] of Object.entries(all)) {
-            await cfg.update(key, value, vscode.ConfigurationTarget.Global);
+        this.suppressConfigReload = true;
+        const target = scope === 'user'
+            ? vscode.ConfigurationTarget.Global
+            : vscode.ConfigurationTarget.Workspace;
+        const cfg = vscode.workspace.getConfiguration('vscommander');
+        for (const key of ALL_VSCOMMANDER_KEYS) {
+            await cfg.update(key, undefined, target);
         }
-    }
-
-    private async resetColorOverrides(): Promise<void> {
-        const cfg = vscode.workspace.getConfiguration('vscommander.colors');
+        const colorsCfg = vscode.workspace.getConfiguration('vscommander.colors');
         for (const key of THEME_KEYS) {
-            await cfg.update(key, undefined, vscode.ConfigurationTarget.Global);
+            await colorsCfg.update(key, undefined, target);
         }
+        this.panel.settings.settingsInScopes = {
+            user: hasSettingsInScope('user'),
+            workspace: hasSettingsInScope('workspace'),
+        };
+        setTimeout(() => { this.suppressConfigReload = false; }, 100);
     }
 
     private refreshPanels(): void {

@@ -2,11 +2,11 @@
 
 # VSCommander
 
-The missing yet essential cross-platform dual-panel file manager for Visual Studio Code, heavily inspired by [Far Manager](https://www.farmanager.com/), [Volkov Commander](https://vc.vvv.kyiv.ua/) and [Norton Commander](https://en.wikipedia.org/wiki/Norton_Commander). It runs as a terminal overlay: your shell stays alive underneath, and you toggle the file panel on and off with `Ctrl+O`.
+The missing yet essential cross-platform dual-panel file manager for Visual Studio Code, heavily inspired by [Far Manager](https://www.farmanager.com/), [Dos Navigator](https://www.ritlabs.com/en/products/dn/), [Volkov Commander](https://vc.vvv.kyiv.ua/), and of course [Norton Commander](https://en.wikipedia.org/wiki/Norton_Commander). It runs as a terminal overlay: your shell stays alive underneath, and you toggle the file panel on and off with `Ctrl+O`.
 
-Previously, a powerful editor was an extension to dual panel file manager. VSCommander is exactly the opposite.
+Previously, a powerful editor was an extension to dual panel file manager. VSCommander is exactly the opposite paradigm that works well in the modern realities.
 
-The goal of the project - to preserve the natural look and feel of File Manager while extending its functionality when plactical, and adding support of modern *nix and Windows-compatible operating systems in mind.
+The goal of the project - to preserve the natural look and feel of File Manager while extending its functionality when plactical, and constantly keeping support of modern *nix and Windows-compatible operating systems.
 
 ![VSCommander Screenshot](https://raw.githubusercontent.com/vmisoft/vscommander/refs/heads/master/demo/screenshot.png)
 
@@ -28,8 +28,9 @@ The project is a work in progress and not published to the marketplace yet.
 - **File selection**: Insert to toggle selection, batch operations on selected files
 - **Function key bar**: F3 View, F4 Edit, F5 Copy, F6 Move, F7 Mkdir, F8 Delete, F9 Config, F10 Quit
 - **Mouse support**: click to select files, switch panes, activate popup buttons, scroll with the wheel
-- **Color themes**: classic Far Manager theme or auto-adapting VS Code theme that matches your active color scheme
+- **Color themes**: classic Far Manager theme or auto-adapting VS Code theme; theme selection popup with live preview
 - **Interactive color editor**: F9 > Options > Edit colors -- visual 16-color palette, hex input, live preview for all 39 theme elements
+- **In-memory settings**: all changes are instant and in-memory; explicitly save or delete persisted settings via F9 > Options when ready
 - **Configurable key bindings**: remap any panel action to a different key via settings
 - **Cross-platform**: Linux, FreeBSD, macOS, and Windows
 

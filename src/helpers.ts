@@ -3,7 +3,7 @@ import { TextStyle, RenderStyle, Theme } from './settings';
 import { DirEntry, PaneGeometry, Layout, PaneStats } from './types';
 
 export function applyStyle(s: TextStyle): string {
-    let out = fgColor(s.fg) + bgColor(s.bg);
+    let out = fgColor(s.fg) + bgColor(s.bg) + '\x1b[22m';
     if (s.bold) out += bold();
     if (s.dim) out += dim();
     return out;

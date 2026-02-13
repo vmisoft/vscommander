@@ -8,6 +8,7 @@ export interface ConfirmPopupConfig {
     title: string;
     bodyLines: string[];
     buttons: string[];
+    disabledButtons?: number[];
     warning?: boolean;
     onConfirm: (buttonIndex: number) => unknown;
 }
@@ -27,6 +28,15 @@ export class ConfirmPopup extends Popup {
     openWith(config: ConfirmPopupConfig): void {
         this.config = config;
         this.buttonGroup = new ButtonGroup(config.buttons);
+        if (config.disabledButtons) {
+            this.buttonGroup.disabledIndices = new Set(config.disabledButtons);
+            for (let i = 0; i < config.buttons.length; i++) {
+                if (!this.buttonGroup.disabledIndices.has(i)) {
+                    this.buttonGroup.selectedIndex = i;
+                    break;
+                }
+            }
+        }
         super.open();
     }
 

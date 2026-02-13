@@ -372,6 +372,9 @@ export interface PanelSettings {
     workspaceDirs: string[];
     toggleKey: string;
     keys: KeyBindings;
+    vscodeThemeKind: number;
+    remoteName: string;
+    settingsInScopes: { user: boolean; workspace: boolean };
 }
 
 export const DEFAULT_SETTINGS: PanelSettings = {
@@ -386,6 +389,9 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     workspaceDirs: [],
     toggleKey: 'Ctrl+O',
     keys: DEFAULT_KEY_BINDINGS,
+    vscodeThemeKind: 2,
+    remoteName: '',
+    settingsInScopes: { user: false, workspace: false },
 };
 
 export function mergeSettings(overrides: Partial<PanelSettings>): PanelSettings {

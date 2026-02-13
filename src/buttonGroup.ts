@@ -9,23 +9,35 @@ export interface ButtonGroupResult {
 export class ButtonGroup {
     labels: string[];
     selectedIndex = 0;
+    disabledIndices = new Set<number>();
 
     constructor(labels: string[]) {
         this.labels = labels;
     }
 
+    private nextEnabled(dir: number): number {
+        for (let step = 1; step <= this.labels.length; step++) {
+            const idx = (this.selectedIndex + dir * step + this.labels.length * step) % this.labels.length;
+            if (!this.disabledIndices.has(idx)) return idx;
+        }
+        return this.selectedIndex;
+    }
+
     handleInput(data: string): ButtonGroupResult {
         if (data === '\x1b[D' || data === '\x1b[Z') {
-            this.selectedIndex = (this.selectedIndex - 1 + this.labels.length) % this.labels.length;
+            this.selectedIndex = this.nextEnabled(-1);
             return { consumed: true };
         }
 
         if (data === '\x1b[C' || data === '\t') {
-            this.selectedIndex = (this.selectedIndex + 1) % this.labels.length;
+            this.selectedIndex = this.nextEnabled(1);
             return { consumed: true };
         }
 
         if (data === '\r') {
+            if (this.disabledIndices.has(this.selectedIndex)) {
+                return { consumed: true };
+            }
             return { consumed: true, confirmed: true };
         }
 
@@ -49,7 +61,9 @@ export class ButtonGroup {
         for (let i = 0; i < this.labels.length; i++) {
             if (i > 0) x += 1;
             const btnWidth = this.labels[i].length + 4;
-            if (col >= x && col < x + btnWidth) return i;
+            if (col >= x && col < x + btnWidth) {
+                return this.disabledIndices.has(i) ? -1 : i;
+            }
             x += btnWidth;
         }
         return -1;
@@ -70,7 +84,10 @@ export class ButtonGroup {
                 col += 1;
             }
             const wrap = i === 0 ? ['{ ', ' }'] : ['[ ', ' ]'];
-            const style = (focused && i === this.selectedIndex) ? selectedButtonStyle : buttonStyle;
+            const isDisabled = this.disabledIndices.has(i);
+            const style = isDisabled
+                ? { ...buttonStyle, dim: true }
+                : (focused && i === this.selectedIndex) ? selectedButtonStyle : buttonStyle;
             const text = wrap[0] + this.labels[i] + wrap[1];
             fb.write(0, col, text, style);
             col += text.length;

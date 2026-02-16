@@ -89,11 +89,16 @@ export async function scanFiles(
     onProgress?: ScanProgressCallback,
 ): Promise<ScanResult> {
     const result: ScanResult = { files: 0, dirs: 0, bytes: 0, internalSymlinks: 0 };
-    const lstat = await fs.promises.lstat(filePath);
+    let lstat: fs.Stats;
+    try {
+        lstat = fs.lstatSync(filePath);
+    } catch {
+        return result;
+    }
     if (lstat.isSymbolicLink()) {
         result.files = 1;
         try {
-            const target = await fs.promises.readlink(filePath);
+            const target = fs.readlinkSync(filePath);
             const resolved = path.resolve(path.dirname(filePath), target);
             if (isInsidePath(resolved, filePath)) {
                 result.internalSymlinks = 1;
@@ -120,7 +125,7 @@ async function scanDirRecursive(
     if (onProgress) await onProgress(dirPath, result.dirs, result.files, result.bytes);
     let entries: fs.Dirent[];
     try {
-        entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+        entries = fs.readdirSync(dirPath, { withFileTypes: true });
     } catch {
         return;
     }
@@ -129,7 +134,7 @@ async function scanDirRecursive(
         if (entry.isSymbolicLink()) {
             result.files++;
             try {
-                const target = await fs.promises.readlink(fullPath);
+                const target = fs.readlinkSync(fullPath);
                 const resolved = path.resolve(dirPath, target);
                 if (isInsidePath(resolved, rootSrc)) {
                     result.internalSymlinks++;
@@ -141,8 +146,7 @@ async function scanDirRecursive(
             await scanDirRecursive(fullPath, rootSrc, result, onProgress);
         } else if (entry.isFile()) {
             try {
-                const st = await fs.promises.stat(fullPath);
-                result.bytes += st.size;
+                result.bytes += fs.statSync(fullPath).size;
             } catch {
                 // skip files we can't stat
             }
@@ -319,7 +323,7 @@ export async function copyMoveOne(
         if (appendMode) {
             await appendFileWithRetry(src, dstPath, srcStat.size, speedTracker, onByteProgress, onError);
         } else {
-            await copyFileWithRetry(src, dstPath, srcStat.size, speedTracker, onByteProgress, onError);
+            await copyFileWithRetry(src, dstPath, srcStat.size, speedTracker, onByteProgress, onError, srcStat.atime, srcStat.mtime);
         }
         if (isMove) {
             await deleteSourceWithRetry(src, false, onError);
@@ -356,14 +360,22 @@ export class CopySpeedTracker {
     }
 }
 
-async function copyFileNative(src: string, dst: string): Promise<void> {
-    await fs.promises.copyFile(src, dst);
-    try {
-        const stat = await fs.promises.stat(src);
-        await fs.promises.utimes(dst, stat.atime, stat.mtime);
-    } catch {
-        // best-effort timestamp preservation
+function copyFileNativeSync(src: string, dst: string, srcAtime?: Date, srcMtime?: Date): void {
+    fs.copyFileSync(src, dst);
+    let atime = srcAtime;
+    let mtime = srcMtime;
+    if (!atime || !mtime) {
+        try {
+            const stat = fs.statSync(src);
+            atime = stat.atime;
+            mtime = stat.mtime;
+        } catch {
+            return;
+        }
     }
+    try {
+        fs.utimesSync(dst, atime, mtime);
+    } catch { /* best-effort timestamp preservation */ }
 }
 
 async function copyFileStreaming(
@@ -418,6 +430,8 @@ async function copyFileWithRetry(
     speedTracker: CopySpeedTracker,
     onByteProgress?: ByteProgressCallback,
     onError?: CopyErrorCallback,
+    srcAtime?: Date,
+    srcMtime?: Date,
 ): Promise<void> {
     for (;;) {
         try {
@@ -426,7 +440,7 @@ async function copyFileWithRetry(
             if (useStreaming) {
                 await copyFileStreaming(src, dst, onByteProgress);
             } else {
-                await copyFileNative(src, dst);
+                copyFileNativeSync(src, dst, srcAtime, srcMtime);
                 if (onByteProgress) await onByteProgress(srcSize, srcSize);
             }
             speedTracker.record(srcSize, Math.max(1, Date.now() - start));
@@ -584,7 +598,7 @@ export async function copyDirRecursive(
     const effectiveOverwrite = overwrite ?? 'overwrite';
 
     try {
-        await fs.promises.mkdir(dst, { recursive: true });
+        fs.mkdirSync(dst, { recursive: true });
     } catch (e) {
         if (!onError) throw e;
         const err = e instanceof Error ? e : new Error(String(e));
@@ -596,7 +610,7 @@ export async function copyDirRecursive(
 
     let entries: fs.Dirent[];
     try {
-        entries = await fs.promises.readdir(src, { withFileTypes: true });
+        entries = fs.readdirSync(src, { withFileTypes: true });
     } catch (e) {
         if (!onError) throw e;
         const err = e instanceof Error ? e : new Error(String(e));
@@ -646,7 +660,10 @@ export async function copyDirRecursive(
             continue;
         } else {
             let fileDstPath = dstPath;
-            const dstExists = await fs.promises.access(fileDstPath).then(() => true, () => false);
+            let dstExists = false;
+            if (effectiveOverwrite !== 'overwrite') {
+                try { fs.accessSync(fileDstPath); dstExists = true; } catch { dstExists = false; }
+            }
             if (dstExists) {
                 if (effectiveOverwrite === 'skip') continue;
                 if (effectiveOverwrite === 'ask' && askOverwrite) {
@@ -677,13 +694,17 @@ export async function copyDirRecursive(
                 }
             }
             let fileSize = 0;
+            let fileAtime: Date | undefined;
+            let fileMtime: Date | undefined;
             try {
-                const st = await fs.promises.stat(srcPath);
+                const st = fs.statSync(srcPath);
                 fileSize = st.size;
+                fileAtime = st.atime;
+                fileMtime = st.mtime;
             } catch {
                 // will fail in copyFileWithRetry and be handled there
             }
-            await copyFileWithRetry(srcPath, fileDstPath, fileSize, speedTracker, onByteProgress, onError);
+            await copyFileWithRetry(srcPath, fileDstPath, fileSize, speedTracker, onByteProgress, onError, fileAtime, fileMtime);
         }
     }
 }

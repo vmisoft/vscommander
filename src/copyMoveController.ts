@@ -320,6 +320,7 @@ export class CopyMoveController {
                 if (e instanceof Error && e.message === 'copy_cancelled') break;
             }
         }
+
         panel.copyProgressPopup.close();
         panel.activePaneObj.clearSelection();
         host.refreshPanels();

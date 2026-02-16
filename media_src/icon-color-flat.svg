@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#222D94"/>
+      <stop offset="100%" stop-color="#111A55"/>
+    </linearGradient>
+    <linearGradient id="panelLeft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0000A0"/>
+      <stop offset="100%" stop-color="#000080"/>
+    </linearGradient>
+    <linearGradient id="panelRight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0000A0"/>
+      <stop offset="100%" stop-color="#000080"/>
+    </linearGradient>
+    <linearGradient id="headerActive" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#18FFFF"/>
+      <stop offset="100%" stop-color="#00E5FF"/>
+    </linearGradient>
+    <linearGradient id="headerGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#18FFFF"/>
+      <stop offset="100%" stop-color="#00E5FF"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#69F0AE"/>
+      <stop offset="100%" stop-color="#00E676"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFAB40"/>
+      <stop offset="100%" stop-color="#FF6D00"/>
+    </linearGradient>
+    <linearGradient id="pink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EA80FC"/>
+      <stop offset="100%" stop-color="#D500F9"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded background -->
+  <rect x="0" y="0" width="256" height="256" rx="40" fill="url(#bgGrad)"/>
+
+  <!-- Subtle grid lines for retro CRT feel -->
+  <line x1="24" y1="56" x2="232" y2="56" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="72" x2="232" y2="72" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="88" x2="232" y2="88" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="104" x2="232" y2="104" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="120" x2="232" y2="120" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="136" x2="232" y2="136" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="152" x2="232" y2="152" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="168" x2="232" y2="168" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+
+  <!-- Left panel -->
+  <rect x="20" y="28" width="106" height="164" rx="4" fill="url(#panelLeft)" opacity="0.95"/>
+  <rect x="20" y="28" width="106" height="164" rx="4" fill="none" stroke="#4040C0" stroke-width="1.8" opacity="0.7"/>
+
+  <!-- Right panel -->
+  <rect x="130" y="28" width="106" height="164" rx="4" fill="url(#panelRight)" opacity="0.8"/>
+  <rect x="130" y="28" width="106" height="164" rx="4" fill="none" stroke="#4040C0" stroke-width="1.8" opacity="0.45"/>
+
+  <!-- Left panel header (active) -->
+  <rect x="24" y="32" width="98" height="16" rx="2" fill="url(#headerActive)" opacity="0.95"/>
+  <text x="73" y="44" font-family="monospace" font-size="11" fill="#000080" text-anchor="middle" font-weight="bold">/vscommander</text>
+
+  <!-- Right panel header -->
+  <rect x="134" y="32" width="98" height="16" rx="2" fill="url(#headerGrad)" opacity="0.5"/>
+  <text x="183" y="44" font-family="monospace" font-size="11" fill="#000080" text-anchor="middle" opacity="0.7">/test</text>
+
+  <!-- Left panel - highlight bar (selected file) -->
+  <rect x="24" y="54" width="98" height="14" rx="2" fill="#18FFFF" opacity="0.15" filter="url(#glow)"/>
+
+  <!-- Left panel file entries -->
+  <text x="30" y="65" font-family="monospace" font-size="11" fill="#4FC3F7" font-weight="bold">/ ..</text>
+  <text x="30" y="81" font-family="monospace" font-size="11" fill="#B3E5FC">/ src</text>
+  <text x="30" y="97" font-family="monospace" font-size="11" fill="#69F0AE">  panel.ts</text>
+  <text x="30" y="113" font-family="monospace" font-size="11" fill="#69F0AE" opacity="0.85">  draw.ts</text>
+  <text x="30" y="129" font-family="monospace" font-size="11" fill="#B3E5FC">/ node_mod</text>
+  <text x="30" y="145" font-family="monospace" font-size="11" fill="#FFAB40">  README.md</text>
+  <text x="30" y="161" font-family="monospace" font-size="11" fill="#EA80FC">  pkg.json</text>
+
+  <!-- Right panel file entries -->
+  <text x="140" y="65" font-family="monospace" font-size="11" fill="#4FC3F7" font-weight="bold">/ ..</text>
+  <text x="140" y="81" font-family="monospace" font-size="11" fill="#B3E5FC">/ vscode</text>
+  <text x="140" y="97" font-family="monospace" font-size="11" fill="#69F0AE">  ext.ts</text>
+  <text x="140" y="113" font-family="monospace" font-size="11" fill="#69F0AE" opacity="0.85">  shell.ts</text>
+  <text x="140" y="129" font-family="monospace" font-size="11" fill="#FFAB40">  TODO.md</text>
+  <text x="140" y="145" font-family="monospace" font-size="11" fill="#EA80FC">  tsconfig</text>
+  <text x="140" y="161" font-family="monospace" font-size="11" fill="#78909C" opacity="0.5">  .gitign</text>
+
+  <!-- Command line area -->
+  <text x="24" y="210" font-family="monospace" font-size="13" fill="#69F0AE" font-weight="bold">$</text>
+  <rect x="38" y="210" width="12" height="3" rx="1" fill="#18FFFF" filter="url(#glow)">
+    <animate attributeName="opacity" values="1;0.1;1" dur="0.8s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Bottom function bar -->
+  <rect x="20" y="214" width="216" height="26" rx="5" fill="#000080" opacity="0.9"/>
+  <rect x="20" y="214" width="216" height="26" rx="5" fill="none" stroke="#2020A0" stroke-width="1"/>
+
+  <!-- Function key buttons -->
+  <rect x="26" y="218" width="46" height="17" rx="4" fill="url(#headerActive)" opacity="0.85"/>
+  <text x="49" y="230" font-family="monospace" font-size="9" fill="#000080" text-anchor="middle" font-weight="bold">F3 View</text>
+
+  <rect x="78" y="218" width="46" height="17" rx="4" fill="url(#green)" opacity="0.75"/>
+  <text x="101" y="230" font-family="monospace" font-size="9" fill="#000080" text-anchor="middle" font-weight="bold">F4 Edit</text>
+
+  <rect x="130" y="218" width="46" height="17" rx="4" fill="url(#headerActive)" opacity="0.6"/>
+  <text x="153" y="230" font-family="monospace" font-size="9" fill="#000080" text-anchor="middle" font-weight="bold">F5 Copy</text>
+
+  <rect x="182" y="218" width="46" height="17" rx="4" fill="url(#orange)" opacity="0.8"/>
+  <text x="205" y="230" font-family="monospace" font-size="9" fill="#000080" text-anchor="middle" font-weight="bold">F8 Del</text>
+</svg>

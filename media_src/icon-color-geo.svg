@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="-20 -20 296 296">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#222D94"/>
+      <stop offset="100%" stop-color="#111A55"/>
+    </linearGradient>
+    <linearGradient id="pl3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0000A0"/>
+      <stop offset="100%" stop-color="#000080"/>
+    </linearGradient>
+    <linearGradient id="cyan3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#18FFFF"/>
+      <stop offset="100%" stop-color="#00E5FF"/>
+    </linearGradient>
+    <linearGradient id="green3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#69F0AE"/>
+      <stop offset="100%" stop-color="#00E676"/>
+    </linearGradient>
+    <linearGradient id="orange3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFAB40"/>
+      <stop offset="100%" stop-color="#FF6D00"/>
+    </linearGradient>
+    <linearGradient id="pink3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EA80FC"/>
+      <stop offset="100%" stop-color="#D500F9"/>
+    </linearGradient>
+    <filter id="sh3">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="gl3">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background - slightly rounded square -->
+  <rect x="6" y="6" width="244" height="244" rx="40" fill="url(#bg3)" filter="url(#sh3)"/>
+
+  <!-- Subtle grid lines for retro CRT feel -->
+  <line x1="24" y1="56" x2="232" y2="56" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="72" x2="232" y2="72" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="88" x2="232" y2="88" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="104" x2="232" y2="104" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="120" x2="232" y2="120" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="136" x2="232" y2="136" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="152" x2="232" y2="152" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="168" x2="232" y2="168" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+  <line x1="24" y1="184" x2="232" y2="184" stroke="#2020A0" stroke-width="0.5" opacity="0.15"/>
+
+  <!-- Left panel -->
+  <rect x="20" y="24" width="106" height="170" rx="4" fill="url(#pl3)" opacity="0.95"/>
+  <rect x="20" y="24" width="106" height="170" rx="4" fill="none" stroke="#4040C0" stroke-width="1.8" opacity="0.7"/>
+
+  <!-- Right panel -->
+  <rect x="130" y="24" width="106" height="170" rx="4" fill="url(#pl3)" opacity="0.8"/>
+  <rect x="130" y="24" width="106" height="170" rx="4" fill="none" stroke="#4040C0" stroke-width="1.8" opacity="0.45"/>
+
+  <!-- Left header - bright cyan bar -->
+  <rect x="24" y="28" width="98" height="16" rx="2" fill="url(#cyan3)" opacity="0.95"/>
+  <!-- Header decorative dots -->
+  <circle cx="32" cy="36" r="3" fill="#000080" opacity="0.5"/>
+  <circle cx="42" cy="36" r="3" fill="#000080" opacity="0.35"/>
+  <rect x="50" y="34" width="64" height="4" rx="2" fill="#000080" opacity="0.25"/>
+
+  <!-- Right header -->
+  <rect x="134" y="28" width="98" height="16" rx="2" fill="#00BCD4" opacity="0.5"/>
+  <circle cx="142" cy="36" r="3" fill="#000080" opacity="0.35"/>
+  <circle cx="152" cy="36" r="3" fill="#000080" opacity="0.2"/>
+  <rect x="160" y="34" width="64" height="4" rx="2" fill="#000080" opacity="0.15"/>
+
+  <!-- Left - selection bar with glow -->
+  <rect x="24" y="50" width="98" height="16" rx="2" fill="#18FFFF" opacity="0.15" filter="url(#gl3)"/>
+
+  <!-- === Left panel rows === -->
+  <!-- Row 1: directory (selected) -->
+  <rect x="30" y="53" width="10" height="10" rx="2.5" fill="#4FC3F7"/>
+  <rect x="44" y="56" width="38" height="4" rx="2" fill="#E0F7FA"/>
+
+  <!-- Row 2: directory -->
+  <rect x="30" y="69" width="10" height="10" rx="2.5" fill="#4FC3F7" opacity="0.8"/>
+  <rect x="44" y="72" width="56" height="4" rx="2" fill="#B3E5FC" opacity="0.65"/>
+
+  <!-- Row 3: code - diamond shape -->
+  <rect x="32" y="88" width="7" height="7" rx="1" fill="#69F0AE" transform="rotate(45 35.5 91.5)"/>
+  <rect x="44" y="88" width="44" height="4" rx="2" fill="url(#green3)" opacity="0.7"/>
+
+  <!-- Row 4: code -->
+  <rect x="32" y="104" width="7" height="7" rx="1" fill="#69F0AE" transform="rotate(45 35.5 107.5)" opacity="0.85"/>
+  <rect x="44" y="104" width="62" height="4" rx="2" fill="url(#green3)" opacity="0.6"/>
+
+  <!-- Row 5: code -->
+  <rect x="32" y="120" width="7" height="7" rx="1" fill="#69F0AE" transform="rotate(45 35.5 123.5)" opacity="0.7"/>
+  <rect x="44" y="120" width="35" height="4" rx="2" fill="url(#green3)" opacity="0.5"/>
+
+  <!-- Row 6: doc - triangle -->
+  <polygon points="35,136 40,145 30,145" fill="#FFAB40" opacity="0.85"/>
+  <rect x="44" y="138" width="50" height="4" rx="2" fill="url(#orange3)" opacity="0.6"/>
+
+  <!-- Row 7: config - circle -->
+  <circle cx="35" cy="157" r="5" fill="#EA80FC" opacity="0.75"/>
+  <rect x="44" y="155" width="40" height="4" rx="2" fill="url(#pink3)" opacity="0.5"/>
+
+  <!-- Row 8: misc -->
+  <rect x="31" y="166" width="8" height="8" rx="1" fill="#78909C" opacity="0.45"/>
+  <rect x="44" y="168" width="54" height="4" rx="2" fill="#90A4AE" opacity="0.35"/>
+
+  <!-- === Right panel rows === -->
+  <!-- Row 1 -->
+  <rect x="140" y="53" width="10" height="10" rx="2.5" fill="#4FC3F7" opacity="0.6"/>
+  <rect x="154" y="56" width="52" height="4" rx="2" fill="#B3E5FC" opacity="0.45"/>
+
+  <!-- Row 2 -->
+  <rect x="140" y="69" width="10" height="10" rx="2.5" fill="#4FC3F7" opacity="0.5"/>
+  <rect x="154" y="72" width="36" height="4" rx="2" fill="#B3E5FC" opacity="0.4"/>
+
+  <!-- Row 3 -->
+  <rect x="142" y="88" width="7" height="7" rx="1" fill="#69F0AE" transform="rotate(45 145.5 91.5)" opacity="0.6"/>
+  <rect x="154" y="88" width="60" height="4" rx="2" fill="url(#green3)" opacity="0.5"/>
+
+  <!-- Row 4 -->
+  <rect x="142" y="104" width="7" height="7" rx="1" fill="#69F0AE" transform="rotate(45 145.5 107.5)" opacity="0.55"/>
+  <rect x="154" y="104" width="42" height="4" rx="2" fill="url(#green3)" opacity="0.45"/>
+
+  <!-- Row 5 -->
+  <polygon points="145,136 150,145 140,145" fill="#FFAB40" opacity="0.55"/>
+  <rect x="154" y="138" width="56" height="4" rx="2" fill="url(#orange3)" opacity="0.4"/>
+
+  <!-- Row 6 -->
+  <circle cx="145" cy="157" r="5" fill="#EA80FC" opacity="0.5"/>
+  <rect x="154" y="155" width="34" height="4" rx="2" fill="url(#pink3)" opacity="0.35"/>
+
+  <!-- Row 7 -->
+  <rect x="141" y="166" width="8" height="8" rx="1" fill="#78909C" opacity="0.3"/>
+  <rect x="154" y="168" width="48" height="4" rx="2" fill="#90A4AE" opacity="0.25"/>
+
+  <!-- Row 8 -->
+  <rect x="142" y="120" width="7" height="7" rx="1" fill="#69F0AE" transform="rotate(45 145.5 123.5)" opacity="0.5"/>
+  <rect x="154" y="120" width="50" height="4" rx="2" fill="url(#green3)" opacity="0.4"/>
+
+  <!-- Command line area -->
+  <text x="24" y="210" font-family="monospace" font-size="13" fill="#69F0AE" font-weight="bold">$</text>
+  <rect x="38" y="210" width="12" height="3" rx="1" fill="#18FFFF" filter="url(#gl3)">
+    <animate attributeName="opacity" values="1;0.1;1" dur="0.8s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- Bottom function bar -->
+  <rect x="20" y="214" width="216" height="26" rx="5" fill="#000080" opacity="0.9"/>
+  <rect x="20" y="214" width="216" height="26" rx="5" fill="none" stroke="#2020A0" stroke-width="1"/>
+
+  <!-- Function buttons with distinct colors -->
+  <rect x="26" y="218" width="46" height="17" rx="4" fill="url(#cyan3)" opacity="0.85"/>
+  <rect x="78" y="218" width="46" height="17" rx="4" fill="url(#green3)" opacity="0.75"/>
+  <rect x="130" y="218" width="46" height="17" rx="4" fill="url(#cyan3)" opacity="0.6"/>
+  <rect x="182" y="218" width="46" height="17" rx="4" fill="url(#orange3)" opacity="0.8"/>
+</svg>

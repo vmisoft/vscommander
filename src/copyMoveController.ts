@@ -71,7 +71,7 @@ export class CopyMoveController {
                 panel.scanProgressPopup.updateScan(
                     currentPath, totalDirs + dirs, totalFiles + files, totalBytes + bytes);
                 host.fire(panel.redraw());
-                await new Promise<void>(r => setTimeout(r, 0));
+                await new Promise<void>(r => setImmediate(r));
             }).catch(e => {
                 if (e instanceof Error && e.message === 'scan_cancelled') return null;
                 throw e;
@@ -156,7 +156,7 @@ export class CopyMoveController {
             if (!force && now - lastRedraw < 50) return;
             lastRedraw = now;
             host.fire(panel.redraw());
-            await new Promise<void>(r => setTimeout(r, 0));
+            await new Promise<void>(r => setImmediate(r));
         };
 
         const onFileProgress = async (fileSrc: string, fileDst: string): Promise<void> => {

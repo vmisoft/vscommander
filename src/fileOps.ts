@@ -34,6 +34,13 @@ export type ByteProgressCallback = (bytesCopied: number, bytesTotal: number) => 
 export type CopyErrorAction = 'retry' | 'skip' | 'cancel' | 'navigate';
 export type CopyErrorCallback = (src: string, dst: string, error: Error) => Promise<CopyErrorAction>;
 
+export type OverwriteAction = 'overwrite' | 'skip' | 'rename' | 'append' | 'cancel';
+export interface OverwriteResult {
+    action: OverwriteAction;
+    newName?: string;
+}
+export type AskOverwriteCallback = (srcPath: string, dstPath: string) => Promise<OverwriteResult>;
+
 export type SymlinkPolicy = 'target' | 'no_change' | 'source' | 'ask';
 export type SymlinkAskCallback = (symlinkPath: string, linkTarget: string) => Promise<SymlinkPolicy | 'cancel'>;
 
@@ -188,7 +195,7 @@ async function deleteSourceWithRetry(
 export async function copyMoveOne(
     src: string, dst: string, isMove: boolean,
     overwrite: 'overwrite' | 'skip' | 'ask',
-    askOverwrite: (name: string) => Promise<boolean>,
+    askOverwrite: (srcPath: string, dstPath: string) => Promise<OverwriteResult>,
     speedTracker: CopySpeedTracker,
     onFileProgress?: FileProgressCallback,
     onByteProgress?: ByteProgressCallback,
@@ -237,12 +244,20 @@ export async function copyMoveOne(
         throwCopyAction(action, src);
     }
 
+    let appendMode = false;
     const exists = await fs.promises.access(dstPath).then(() => true, () => false);
     if (exists) {
         if (overwrite === 'skip') return;
         if (overwrite === 'ask') {
-            const proceed = await askOverwrite(path.basename(dstPath));
-            if (!proceed) return;
+            const result = await askOverwrite(src, dstPath);
+            if (result.action === 'skip') return;
+            if (result.action === 'cancel') throw new Error('copy_cancelled');
+            if (result.action === 'rename' && result.newName) {
+                dstPath = path.join(path.dirname(dstPath), result.newName);
+            }
+            if (result.action === 'append') {
+                appendMode = true;
+            }
         }
     }
 
@@ -269,7 +284,12 @@ export async function copyMoveOne(
     if (srcStat.isSymbolicLink()) {
         const dstDir = path.dirname(dstPath);
         await fs.promises.mkdir(dstDir, { recursive: true });
-        if (onFileProgress) await onFileProgress(src, dstPath);
+        if (onFileProgress) {
+            try { await onFileProgress(src, dstPath); } catch (e) {
+                if (e instanceof Error && e.message === 'copy_interrupted_skip') return;
+                throw e;
+            }
+        }
         let effectivePolicy = policy;
         if (effectivePolicy === 'ask' && onSymlinkAsk) {
             let linkTarget = '';
@@ -290,8 +310,17 @@ export async function copyMoveOne(
     } else {
         const dstDir = path.dirname(dstPath);
         await fs.promises.mkdir(dstDir, { recursive: true });
-        if (onFileProgress) await onFileProgress(src, dstPath);
-        await copyFileWithRetry(src, dstPath, srcStat.size, speedTracker, onByteProgress, onError);
+        if (onFileProgress) {
+            try { await onFileProgress(src, dstPath); } catch (e) {
+                if (e instanceof Error && e.message === 'copy_interrupted_skip') return;
+                throw e;
+            }
+        }
+        if (appendMode) {
+            await appendFileWithRetry(src, dstPath, srcStat.size, speedTracker, onByteProgress, onError);
+        } else {
+            await copyFileWithRetry(src, dstPath, srcStat.size, speedTracker, onByteProgress, onError);
+        }
         if (isMove) {
             await deleteSourceWithRetry(src, false, onError);
         }
@@ -403,11 +432,82 @@ async function copyFileWithRetry(
             speedTracker.record(srcSize, Math.max(1, Date.now() - start));
             return;
         } catch (e) {
+            if (e instanceof Error) {
+                if (e.message === 'copy_interrupted_retry') continue;
+                if (e.message === 'copy_interrupted_skip') {
+                    try { await fs.promises.unlink(dst); } catch { /* best-effort cleanup */ }
+                    return;
+                }
+                if (e.message === 'copy_navigate' || e.message === 'copy_cancelled') throw e;
+            }
             if (!onError) throw e;
             const err = e instanceof Error ? e : new Error(String(e));
             const action = await onError(src, dst, err);
             if (action === 'retry') continue;
             try { await fs.promises.unlink(dst); } catch { /* best-effort cleanup */ }
+            if (action === 'skip') return;
+            throwCopyAction(action, src);
+        }
+    }
+}
+
+async function appendFileStreaming(
+    src: string, dst: string,
+    onByteProgress?: ByteProgressCallback,
+): Promise<void> {
+    const srcHandle = await fs.promises.open(src, 'r');
+    try {
+        const stat = await srcHandle.stat();
+        const total = stat.size;
+        const dstHandle = await fs.promises.open(dst, 'a');
+        try {
+            const buf = Buffer.alloc(COPY_BUF_SIZE);
+            let copied = 0;
+            let lastReport = 0;
+            for (;;) {
+                const { bytesRead } = await srcHandle.read(buf, 0, COPY_BUF_SIZE);
+                if (bytesRead === 0) break;
+                await dstHandle.write(buf, 0, bytesRead);
+                copied += bytesRead;
+                if (onByteProgress) {
+                    const now = Date.now();
+                    if (now - lastReport >= 50 || copied >= total) {
+                        lastReport = now;
+                        await onByteProgress(copied, total);
+                    }
+                }
+            }
+        } finally {
+            await dstHandle.close();
+        }
+    } finally {
+        await srcHandle.close();
+    }
+}
+
+async function appendFileWithRetry(
+    src: string, dst: string,
+    srcSize: number,
+    speedTracker: CopySpeedTracker,
+    onByteProgress?: ByteProgressCallback,
+    onError?: CopyErrorCallback,
+): Promise<void> {
+    for (;;) {
+        try {
+            const start = Date.now();
+            await appendFileStreaming(src, dst, onByteProgress);
+            speedTracker.record(srcSize, Math.max(1, Date.now() - start));
+            return;
+        } catch (e) {
+            if (e instanceof Error) {
+                if (e.message === 'copy_interrupted_retry') continue;
+                if (e.message === 'copy_interrupted_skip') return;
+                if (e.message === 'copy_navigate' || e.message === 'copy_cancelled') throw e;
+            }
+            if (!onError) throw e;
+            const err = e instanceof Error ? e : new Error(String(e));
+            const action = await onError(src, dst, err);
+            if (action === 'retry') continue;
             if (action === 'skip') return;
             throwCopyAction(action, src);
         }
@@ -476,7 +576,7 @@ export async function copyDirRecursive(
     symlinkPolicy?: SymlinkPolicy,
     onSymlinkAsk?: SymlinkAskCallback,
     overwrite?: 'overwrite' | 'skip' | 'ask',
-    askOverwrite?: (name: string) => Promise<boolean>,
+    askOverwrite?: (srcPath: string, dstPath: string) => Promise<OverwriteResult>,
 ): Promise<void> {
     const effectiveRootSrc = rootSrc ?? src;
     const effectiveRootDst = rootDst ?? dst;
@@ -510,16 +610,26 @@ export async function copyDirRecursive(
         const srcPath = path.join(src, entry.name);
         const dstPath = path.join(dst, entry.name);
         if (entry.isSymbolicLink()) {
-            const dstExists = await fs.promises.lstat(dstPath).then(() => true, () => false);
+            let symlinkDstPath = dstPath;
+            const dstExists = await fs.promises.lstat(symlinkDstPath).then(() => true, () => false);
             if (dstExists) {
                 if (effectiveOverwrite === 'skip') continue;
                 if (effectiveOverwrite === 'ask' && askOverwrite) {
-                    const proceed = await askOverwrite(entry.name);
-                    if (!proceed) continue;
+                    const result = await askOverwrite(srcPath, symlinkDstPath);
+                    if (result.action === 'skip') continue;
+                    if (result.action === 'cancel') throw new Error('copy_cancelled');
+                    if (result.action === 'rename' && result.newName) {
+                        symlinkDstPath = path.join(dst, result.newName);
+                    }
                 }
-                try { await fs.promises.unlink(dstPath); } catch { /* will fail in symlink creation */ }
+                try { await fs.promises.unlink(symlinkDstPath); } catch { /* will fail in symlink creation */ }
             }
-            if (onFileProgress) await onFileProgress(srcPath, dstPath);
+            if (onFileProgress) {
+                try { await onFileProgress(srcPath, symlinkDstPath); } catch (e) {
+                    if (e instanceof Error && e.message === 'copy_interrupted_skip') continue;
+                    throw e;
+                }
+            }
             let policy = effectivePolicy;
             if (policy === 'ask' && onSymlinkAsk) {
                 let linkTarget = '';
@@ -528,22 +638,44 @@ export async function copyDirRecursive(
                 if (answer === 'cancel') throwCopyAction('cancel', srcPath);
                 policy = answer;
             }
-            await copySymlinkWithPolicy(srcPath, dstPath, effectiveRootSrc, effectiveRootDst, policy, onError);
+            await copySymlinkWithPolicy(srcPath, symlinkDstPath, effectiveRootSrc, effectiveRootDst, policy, onError);
         } else if (entry.isDirectory()) {
             await copyDirRecursive(srcPath, dstPath, speedTracker, onFileProgress, onByteProgress, onError, effectiveRootSrc, effectiveRootDst, effectivePolicy, onSymlinkAsk, effectiveOverwrite, askOverwrite);
         } else if (!entry.isFile()) {
             // skip special files (sockets, FIFOs, device nodes)
             continue;
         } else {
-            const dstExists = await fs.promises.access(dstPath).then(() => true, () => false);
+            let fileDstPath = dstPath;
+            const dstExists = await fs.promises.access(fileDstPath).then(() => true, () => false);
             if (dstExists) {
                 if (effectiveOverwrite === 'skip') continue;
                 if (effectiveOverwrite === 'ask' && askOverwrite) {
-                    const proceed = await askOverwrite(entry.name);
-                    if (!proceed) continue;
+                    const result = await askOverwrite(srcPath, fileDstPath);
+                    if (result.action === 'skip') continue;
+                    if (result.action === 'cancel') throw new Error('copy_cancelled');
+                    if (result.action === 'rename' && result.newName) {
+                        fileDstPath = path.join(dst, result.newName);
+                    }
+                    if (result.action === 'append') {
+                        if (onFileProgress) {
+                            try { await onFileProgress(srcPath, fileDstPath); } catch (e) {
+                                if (e instanceof Error && e.message === 'copy_interrupted_skip') continue;
+                                throw e;
+                            }
+                        }
+                        let fileSize = 0;
+                        try { const st = await fs.promises.stat(srcPath); fileSize = st.size; } catch { }
+                        await appendFileWithRetry(srcPath, fileDstPath, fileSize, speedTracker, onByteProgress, onError);
+                        continue;
+                    }
                 }
             }
-            if (onFileProgress) await onFileProgress(srcPath, dstPath);
+            if (onFileProgress) {
+                try { await onFileProgress(srcPath, fileDstPath); } catch (e) {
+                    if (e instanceof Error && e.message === 'copy_interrupted_skip') continue;
+                    throw e;
+                }
+            }
             let fileSize = 0;
             try {
                 const st = await fs.promises.stat(srcPath);
@@ -551,7 +683,57 @@ export async function copyDirRecursive(
             } catch {
                 // will fail in copyFileWithRetry and be handled there
             }
-            await copyFileWithRetry(srcPath, dstPath, fileSize, speedTracker, onByteProgress, onError);
+            await copyFileWithRetry(srcPath, fileDstPath, fileSize, speedTracker, onByteProgress, onError);
+        }
+    }
+}
+
+export type DeleteProgressCallback = (
+    currentPath: string, files: number, dirs: number,
+) => Promise<void>;
+
+export async function deleteRecursive(
+    filePath: string,
+    onProgress?: DeleteProgressCallback,
+): Promise<void> {
+    const result = { files: 0, dirs: 0 };
+    const lstat = await fs.promises.lstat(filePath);
+
+    if (lstat.isDirectory() && !lstat.isSymbolicLink()) {
+        await deleteContentsRecursive(filePath, result, onProgress);
+        if (onProgress) await onProgress(filePath, result.files, result.dirs);
+        await fs.promises.rmdir(filePath);
+        result.dirs++;
+    } else {
+        if (onProgress) await onProgress(filePath, result.files, result.dirs);
+        await fs.promises.unlink(filePath);
+        result.files++;
+    }
+}
+
+async function deleteContentsRecursive(
+    dirPath: string,
+    result: { files: number; dirs: number },
+    onProgress?: DeleteProgressCallback,
+): Promise<void> {
+    let entries: fs.Dirent[];
+    try {
+        entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+    } catch {
+        return;
+    }
+
+    for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory() && !entry.isSymbolicLink()) {
+            await deleteContentsRecursive(fullPath, result, onProgress);
+            if (onProgress) await onProgress(fullPath, result.files, result.dirs);
+            try { await fs.promises.rmdir(fullPath); } catch { /* may fail */ }
+            result.dirs++;
+        } else {
+            if (onProgress) await onProgress(fullPath, result.files, result.dirs);
+            try { await fs.promises.unlink(fullPath); } catch { /* may fail */ }
+            result.files++;
         }
     }
 }

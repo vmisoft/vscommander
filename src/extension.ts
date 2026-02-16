@@ -1,3 +1,8 @@
+// Disable Electron's ASAR archive interception so .asar files are treated
+// as regular files by Node's fs module. Without this, copying directories
+// containing .asar files fails with "Invalid package" errors.
+(process as any).noAsar = true;
+
 import * as vscode from 'vscode';
 import * as os from 'os';
 import { spawnShell, ShellProxy, WindowsBackend } from './shell';
@@ -5,7 +10,7 @@ import { Panel } from './panel';
 import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings, resolveTheme, ThemeName, ColorOverride, applyColorOverrides, THEME_KEYS } from './settings';
 import { DirectoryInfoProvider } from './directoryInfo';
 import { BlinkTimer, PollTimer } from './timerManager';
-import { makeDirectories } from './fileOps';
+import { makeDirectories, deleteRecursive } from './fileOps';
 import { ShellRouter } from './shellRouter';
 import { QuickViewController, QuickViewHost } from './quickView';
 import { CopyMoveController } from './copyMoveController';
@@ -109,6 +114,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private mkdirBlinkTimer = new BlinkTimer(500);
     private copyMoveBlinkTimer = new BlinkTimer(500);
     private colorEditorBlinkTimer = new BlinkTimer(500);
+    private overwriteBlinkTimer = new BlinkTimer(500);
     private isDetached = false;
     private lastViewedFile: string | undefined;
     private quickView: QuickViewController;
@@ -321,6 +327,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         this.mkdirBlinkTimer.stop();
         this.copyMoveBlinkTimer.stop();
         this.colorEditorBlinkTimer.stop();
+        this.overwriteBlinkTimer.stop();
         this.spinnerTimer.stop();
         this.stopCommandPoll();
         this.shell?.kill();
@@ -425,14 +432,6 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     this.copyMoveController.execute(this.panel, result.result, {
                         fire: s => this.writeEmitter.fire(s),
                         refreshPanels: () => this.refreshPanels(),
-                        askOverwrite: async (name) => {
-                            const action = await vscode.window.showWarningMessage(
-                                '"' + name + '" already exists. Overwrite?',
-                                { modal: true },
-                                'Overwrite', 'Skip',
-                            );
-                            return action === 'Overwrite';
-                        },
                     });
                     break;
                 case 'changeTheme': {
@@ -471,6 +470,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     break;
             }
             this.copyMoveController.handleErrorDismiss(this.panel.confirmPopup.active);
+            this.copyMoveController.handleOverwriteDismiss(this.panel.overwritePopup.active);
             if (this.panel.isSearchActive) {
                 this.blinkTimer.restart(
                     () => this.panel!.resetSearchBlink(),
@@ -513,6 +513,15 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 () => {
                     if (this.panel?.isColorEditorBlinkActive) return this.panel.renderColorEditorCursorBlink();
                     this.colorEditorBlinkTimer.stop();
+                },
+                s => this.writeEmitter.fire(s),
+            );
+            this.overwriteBlinkTimer.sync(
+                () => !!this.panel?.isOverwriteBlinkActive,
+                () => this.panel!.resetOverwriteBlink(),
+                () => {
+                    if (this.panel?.isOverwriteBlinkActive) return this.panel.renderOverwriteCursorBlink();
+                    this.overwriteBlinkTimer.stop();
                 },
                 s => this.writeEmitter.fire(s),
             );
@@ -721,13 +730,48 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         }
     }
 
-    private deleteFile(filePath: string, toTrash: boolean): void {
-        const uri = vscode.Uri.file(filePath);
-        vscode.workspace.fs.delete(uri, { recursive: true, useTrash: toTrash }).then(() => {
+    private async deleteFile(filePath: string, toTrash: boolean): Promise<void> {
+        if (!this.panel) return;
+
+        let isDir = false;
+        try {
+            const stat = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+            isDir = (stat.type & vscode.FileType.Directory) !== 0;
+        } catch {
             this.refreshPanels();
-        }, () => {
-            this.refreshPanels();
-        });
+            return;
+        }
+
+        const mode = isDir ? 'directory' : 'file';
+        this.panel.deleteProgressPopup.openWith(mode, filePath);
+        this.writeEmitter.fire(this.panel.redraw());
+
+        if (toTrash) {
+            try {
+                await vscode.workspace.fs.delete(vscode.Uri.file(filePath), { recursive: true, useTrash: true });
+            } catch { /* ignore */ }
+        } else {
+            let lastRedraw = 0;
+            try {
+                await deleteRecursive(filePath, async (currentPath, files, dirs) => {
+                    if (this.panel?.deleteProgressPopup.cancelled) {
+                        throw new Error('delete_cancelled');
+                    }
+                    this.panel?.deleteProgressPopup.updateProgress(currentPath, files, dirs);
+                    const now = Date.now();
+                    if (now - lastRedraw >= 50) {
+                        lastRedraw = now;
+                        this.writeEmitter.fire(this.panel!.redraw());
+                        await new Promise<void>(r => setTimeout(r, 0));
+                    }
+                });
+            } catch {
+                // cancelled or error — stop and refresh
+            }
+        }
+
+        this.panel.deleteProgressPopup.close();
+        this.refreshPanels();
     }
 
     private makeDirectory(cwd: string, dirName: string, linkType: 'none' | 'symbolic' | 'junction', linkTarget: string, multipleNames: boolean): void {

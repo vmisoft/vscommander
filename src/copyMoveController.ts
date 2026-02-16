@@ -1,17 +1,20 @@
 import * as path from 'path';
+import * as fs from 'fs';
 import { Panel } from './panel';
 import { CopyMoveResult } from './copyMovePopup';
-import { copyMoveOne, scanFiles, CopyErrorAction, CopyActionError, CopySpeedTracker, ByteProgressCallback, SymlinkPolicy, SymlinkAskCallback } from './fileOps';
+import { copyMoveOne, scanFiles, CopyErrorAction, CopyActionError, CopySpeedTracker, ByteProgressCallback, SymlinkPolicy, SymlinkAskCallback, OverwriteResult } from './fileOps';
+import { OverwriteChoice, OverwriteInfo, OverwritePopupResult } from './overwritePopup';
 
 export interface CopyMoveHost {
     fire(data: string): void;
     refreshPanels(): void;
-    askOverwrite(name: string): Promise<boolean>;
 }
 
 export class CopyMoveController {
     private copyErrorResolve: ((action: CopyErrorAction) => void) | null = null;
     private symlinkResolve: ((value: SymlinkPolicy | 'cancel') => void) | null = null;
+    private overwriteResolve: ((result: OverwriteResult) => void) | null = null;
+    private rememberedChoice: OverwriteChoice | null = null;
 
     handleErrorDismiss(confirmPopupActive: boolean): void {
         if (this.symlinkResolve && !confirmPopupActive) {
@@ -27,6 +30,14 @@ export class CopyMoveController {
         }
     }
 
+    handleOverwriteDismiss(overwritePopupActive: boolean): void {
+        if (this.overwriteResolve && !overwritePopupActive) {
+            const resolve = this.overwriteResolve;
+            this.overwriteResolve = null;
+            resolve({ action: 'cancel' });
+        }
+    }
+
     async execute(panel: Panel, result: CopyMoveResult, host: CopyMoveHost): Promise<void> {
         const { mode, targetPath, overwrite, sourceFiles, sourceCwd } = result;
         const targetDir = path.isAbsolute(targetPath)
@@ -35,6 +46,8 @@ export class CopyMoveController {
 
         const isMove = mode === 'move';
         const modeLabel = isMove ? 'move' : 'copy';
+
+        this.rememberedChoice = null;
 
         panel.scanProgressPopup.openWith(modeLabel);
         host.fire(panel.redraw());
@@ -147,6 +160,19 @@ export class CopyMoveController {
         };
 
         const onFileProgress = async (fileSrc: string, fileDst: string): Promise<void> => {
+            const pauseAction = await panel.copyProgressPopup.checkPause();
+            if (pauseAction) {
+                if (pauseAction === 'skip') {
+                    throw new Error('copy_interrupted_skip');
+                } else if (pauseAction === 'navigate') {
+                    const e = new Error('copy_navigate');
+                    (e as CopyActionError).navigatePath = fileSrc;
+                    throw e;
+                } else if (pauseAction === 'cancel') {
+                    throw new Error('copy_cancelled');
+                }
+                // 'continue' or 'retry' — continue normally
+            }
             if (panel.copyProgressPopup.cancelled) {
                 throw new Error('copy_cancelled');
             }
@@ -161,6 +187,22 @@ export class CopyMoveController {
         };
 
         const onByteProgress: ByteProgressCallback = async (bytesCopied: number, bytesFileTotal: number): Promise<void> => {
+            const pauseAction = await panel.copyProgressPopup.checkPause();
+            if (pauseAction) {
+                if (pauseAction === 'continue') {
+                    // resume copying the current file in place
+                } else if (pauseAction === 'retry') {
+                    throw new Error('copy_interrupted_retry');
+                } else if (pauseAction === 'skip') {
+                    throw new Error('copy_interrupted_skip');
+                } else if (pauseAction === 'navigate') {
+                    const e = new Error('copy_navigate');
+                    (e as CopyActionError).navigatePath = currentSrc;
+                    throw e;
+                } else {
+                    throw new Error('copy_cancelled');
+                }
+            }
             if (panel.copyProgressPopup.cancelled) {
                 throw new Error('copy_cancelled');
             }
@@ -194,6 +236,58 @@ export class CopyMoveController {
             });
         };
 
+        const askOverwrite = async (srcPath: string, dstPath: string): Promise<OverwriteResult> => {
+            // Stat both files
+            let srcSize = 0, srcMtime = new Date(0);
+            let dstSize = 0, dstMtime = new Date(0);
+            let isDir = false;
+            try {
+                const srcStat = await fs.promises.stat(srcPath);
+                srcSize = srcStat.size;
+                srcMtime = srcStat.mtime;
+                isDir = srcStat.isDirectory();
+            } catch { /* use defaults */ }
+            try {
+                const dstStat = await fs.promises.stat(dstPath);
+                dstSize = dstStat.size;
+                dstMtime = dstStat.mtime;
+                if (dstStat.isDirectory()) isDir = true;
+            } catch { /* use defaults */ }
+
+            // Handle remembered choice
+            if (this.rememberedChoice) {
+                return this.resolveChoice(this.rememberedChoice, srcPath, dstPath, srcSize, srcMtime, dstSize, dstMtime);
+            }
+
+            // Compute Rename (N)
+            const { n: renameNValue, name: renameNName } = await computeRenameN(dstPath);
+
+            const info: OverwriteInfo = {
+                name: path.basename(dstPath),
+                isDir,
+                srcSize,
+                srcDate: srcMtime,
+                dstSize,
+                dstDate: dstMtime,
+                renameN: renameNValue,
+                renameNName,
+            };
+
+            return new Promise<OverwriteResult>((resolve) => {
+                this.overwriteResolve = resolve;
+                panel.overwritePopup.openWith(info, (popupResult: OverwritePopupResult) => {
+                    this.overwriteResolve = null;
+
+                    if (popupResult.remember && popupResult.choice !== 'rename' && popupResult.choice !== 'cancel') {
+                        this.rememberedChoice = popupResult.choice;
+                    }
+
+                    resolve(this.resolvePopupResult(popupResult, srcPath, dstPath, srcSize, srcMtime, dstSize, dstMtime, renameNName));
+                });
+                host.fire(panel.redraw());
+            });
+        };
+
         panel.copyProgressPopup.updateProgress('', '', 0, totalFiles, 0, totalBytes, 0, 0);
         host.fire(panel.redraw());
 
@@ -206,7 +300,7 @@ export class CopyMoveController {
                 ? targetDir
                 : path.join(targetDir, fileName);
             try {
-                await copyMoveOne(src, dst, isMove, overwrite, host.askOverwrite, speedTracker, onFileProgress, onByteProgress, onError, symlinkPolicy, onSymlinkAsk);
+                await copyMoveOne(src, dst, isMove, overwrite, askOverwrite, speedTracker, onFileProgress, onByteProgress, onError, symlinkPolicy, onSymlinkAsk);
             } catch (e) {
                 if (e instanceof Error && e.message === 'copy_navigate') {
                     const navPath = (e as CopyActionError).navigatePath;
@@ -229,5 +323,71 @@ export class CopyMoveController {
         panel.copyProgressPopup.close();
         panel.activePaneObj.clearSelection();
         host.refreshPanels();
+    }
+
+    private resolvePopupResult(
+        popupResult: OverwritePopupResult,
+        srcPath: string, dstPath: string,
+        srcSize: number, srcMtime: Date,
+        dstSize: number, dstMtime: Date,
+        renameNName: string,
+    ): OverwriteResult {
+        switch (popupResult.choice) {
+            case 'overwrite':
+                return { action: 'overwrite' };
+            case 'skip':
+                return { action: 'skip' };
+            case 'cancel':
+                return { action: 'cancel' };
+            case 'rename':
+                return { action: 'rename', newName: popupResult.renameName };
+            case 'rename_n':
+                return { action: 'rename', newName: popupResult.renameName || renameNName };
+            case 'append':
+                return { action: 'append' };
+            case 'keep_largest':
+                return { action: srcSize >= dstSize ? 'overwrite' : 'skip' };
+            case 'keep_newest':
+                return { action: srcMtime >= dstMtime ? 'overwrite' : 'skip' };
+        }
+    }
+
+    private async resolveChoice(
+        choice: OverwriteChoice,
+        srcPath: string, dstPath: string,
+        srcSize: number, srcMtime: Date,
+        dstSize: number, dstMtime: Date,
+    ): Promise<OverwriteResult> {
+        switch (choice) {
+            case 'overwrite':
+                return { action: 'overwrite' };
+            case 'skip':
+                return { action: 'skip' };
+            case 'append':
+                return { action: 'append' };
+            case 'keep_largest':
+                return { action: srcSize >= dstSize ? 'overwrite' : 'skip' };
+            case 'keep_newest':
+                return { action: srcMtime >= dstMtime ? 'overwrite' : 'skip' };
+            case 'rename_n': {
+                const { n: _, name: nName } = await computeRenameN(dstPath);
+                return { action: 'rename', newName: nName };
+            }
+            default:
+                return { action: 'cancel' };
+        }
+    }
+}
+
+async function computeRenameN(dstPath: string): Promise<{ n: number; name: string }> {
+    const dir = path.dirname(dstPath);
+    const ext = path.extname(dstPath);
+    const base = path.basename(dstPath, ext);
+
+    for (let n = 1; ; n++) {
+        const newName = base + ' (' + n + ')' + ext;
+        const newPath = path.join(dir, newName);
+        const exists = await fs.promises.access(newPath).then(() => true, () => false);
+        if (!exists) return { n, name: newName };
     }
 }

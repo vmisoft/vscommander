@@ -84,6 +84,12 @@ export class Pane {
     }
 
     refresh(settings: PanelSettings): void {
+        // If cwd no longer exists, walk up to the nearest existing ancestor
+        while (!fs.existsSync(this.cwd) && path.dirname(this.cwd) !== this.cwd) {
+            this.cwd = path.dirname(this.cwd);
+            this.cursor = 0;
+            this.scroll = 0;
+        }
         this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
         this.cursor = Math.min(this.cursor, Math.max(0, this.entries.length - 1));
     }

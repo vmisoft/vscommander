@@ -16,7 +16,8 @@ import { ConfirmPopup } from './confirmPopup';
 import { MkdirPopup } from './mkdirPopup';
 import { MenuPopup, MenuCommand } from './menuPopup';
 import { CopyMovePopup, CopyMoveMode, CopyMoveResult } from './copyMovePopup';
-import { CopyProgressPopup, ScanProgressPopup } from './copyProgressPopup';
+import { CopyProgressPopup, ScanProgressPopup, DeleteProgressPopup } from './copyProgressPopup';
+import { OverwritePopup } from './overwritePopup';
 import { ColorEditorPopup } from './colorEditorPopup';
 import { ThemePopup } from './themePopup';
 import { ColorOverride, ThemeName, applyColorOverrides, themeToOverrides, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS } from './settings';
@@ -63,6 +64,8 @@ export class Panel {
     copyMovePopup: CopyMovePopup;
     copyProgressPopup: CopyProgressPopup;
     scanProgressPopup: ScanProgressPopup;
+    deleteProgressPopup: DeleteProgressPopup;
+    overwritePopup: OverwritePopup;
     colorEditorPopup: ColorEditorPopup;
     themePopup: ThemePopup;
     termBuffer: TerminalBuffer;
@@ -99,6 +102,8 @@ export class Panel {
         this.copyMovePopup = new CopyMovePopup();
         this.copyProgressPopup = new CopyProgressPopup();
         this.scanProgressPopup = new ScanProgressPopup();
+        this.deleteProgressPopup = new DeleteProgressPopup();
+        this.overwritePopup = new OverwritePopup();
         this.colorEditorPopup = new ColorEditorPopup();
         this.themePopup = new ThemePopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
@@ -136,7 +141,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.colorEditorPopup, this.themePopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -170,13 +175,16 @@ export class Panel {
             || this.confirmPopup.active || this.mkdirPopup.active
             || this.menuPopup.active || this.copyMovePopup.active
             || this.copyProgressPopup.active || this.scanProgressPopup.active
+            || this.deleteProgressPopup.active || this.overwritePopup.active
             || this.colorEditorPopup.active || this.themePopup.active;
     }
 
     private get activePopupObj(): Popup | null {
+        if (this.overwritePopup.active) return this.overwritePopup;
         if (this.confirmPopup.active) return this.confirmPopup;
         if (this.copyProgressPopup.active) return this.copyProgressPopup;
         if (this.scanProgressPopup.active) return this.scanProgressPopup;
+        if (this.deleteProgressPopup.active) return this.deleteProgressPopup;
         if (this.themePopup.active) return this.themePopup;
         if (this.colorEditorPopup.active) return this.colorEditorPopup;
         if (this.copyMovePopup.active) return this.copyMovePopup;
@@ -274,6 +282,19 @@ export class Panel {
         return this.colorEditorPopup.renderColorEditorBlink(this.rows, this.cols, this.settings.theme);
     }
 
+    get isOverwriteBlinkActive(): boolean {
+        return this.overwritePopup.active && this.overwritePopup.isRenameBlink;
+    }
+
+    resetOverwriteBlink(): void {
+        this.overwritePopup.resetOverwriteBlink();
+    }
+
+    renderOverwriteCursorBlink(): string {
+        if (!this.visible || !this.overwritePopup.active) return '';
+        return this.overwritePopup.renderOverwriteBlink(this.rows, this.cols, this.settings.theme);
+    }
+
     renderSearchCursorBlink(): string {
         if (!this.visible || !this.searchPopup.active) return '';
         const layout = this.getLayout();
@@ -314,6 +335,15 @@ export class Panel {
             return { action: 'none' };
         }
 
+        if (this.overwritePopup.active) {
+            return this.resolvePopupResult(this.overwritePopup.handleInput(data));
+        }
+
+        if (this.overwritePopup.active) {
+            this.overwritePopup.handleInput(data);
+            return { action: 'redraw', data: this.render() };
+        }
+
         if (this.confirmPopup.active) {
             return this.resolvePopupResult(this.confirmPopup.handleInput(data));
         }
@@ -325,6 +355,11 @@ export class Panel {
 
         if (this.scanProgressPopup.active) {
             this.scanProgressPopup.handleInput(data);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (this.deleteProgressPopup.active) {
+            this.deleteProgressPopup.handleInput(data);
             return { action: 'redraw', data: this.render() };
         }
 
@@ -1079,8 +1114,19 @@ export class Panel {
             if (!selected) return undefined;
             const pane = this.drivePopup.targetPane === 'left' ? this.left : this.right;
             if (selected.path) {
-                pane.cwd = selected.path;
-                pane.entries = Pane.readDir(selected.path, this.settings);
+                let targetPath = selected.path;
+                // On Windows, if the selected drive matches the other pane's drive,
+                // navigate to the other pane's cwd instead of the drive root
+                if (process.platform === 'win32' && selected.group === 'drive') {
+                    const otherCwd = otherPane.cwd;
+                    const selectedRoot = path.parse(path.resolve(selected.path)).root.toLowerCase();
+                    const otherRoot = path.parse(path.resolve(otherCwd)).root.toLowerCase();
+                    if (selectedRoot === otherRoot) {
+                        targetPath = otherCwd;
+                    }
+                }
+                pane.cwd = targetPath;
+                pane.entries = Pane.readDir(targetPath, this.settings);
             } else {
                 pane.cwd = selected.label;
                 pane.entries = [];
@@ -1289,7 +1335,14 @@ export class Panel {
 
         const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
 
-        if (this.confirmPopup.active) {
+        if (this.overwritePopup.active) {
+            if (this.copyProgressPopup.active) {
+                out.push(this.copyProgressPopup.render(this.rows, this.cols, t));
+                out.push(this.copyProgressPopup.renderShadow(cellAt));
+            }
+            out.push(this.overwritePopup.render(this.rows, this.cols, t));
+            out.push(this.overwritePopup.renderShadow(cellAt));
+        } else if (this.confirmPopup.active) {
             if (this.copyProgressPopup.active) {
                 out.push(this.copyProgressPopup.render(this.rows, this.cols, t));
                 out.push(this.copyProgressPopup.renderShadow(cellAt));
@@ -1302,6 +1355,9 @@ export class Panel {
         } else if (this.scanProgressPopup.active) {
             out.push(this.scanProgressPopup.render(this.rows, this.cols, t));
             out.push(this.scanProgressPopup.renderShadow(cellAt));
+        } else if (this.deleteProgressPopup.active) {
+            out.push(this.deleteProgressPopup.render(this.rows, this.cols, t));
+            out.push(this.deleteProgressPopup.renderShadow(cellAt));
         } else if (this.themePopup.active) {
             out.push(this.themePopup.render(this.rows, this.cols, t));
         } else if (this.colorEditorPopup.active) {
@@ -1354,10 +1410,13 @@ export class Panel {
                     'Do you wish to *move* the ' + kind + ' to the *' + trashName + '*?',
                     entry.name,
                 ],
-                buttons: ['Move', 'Cancel'],
+                buttons: ['Move', 'Delete permanently', 'Cancel'],
                 onConfirm: (btnIdx) => {
                     if (btnIdx === 0) {
                         return { action: 'deleteFile', filePath: fullPath, toTrash: true };
+                    }
+                    if (btnIdx === 1) {
+                        return { action: 'deleteFile', filePath: fullPath, toTrash: false };
                     }
                 },
             });

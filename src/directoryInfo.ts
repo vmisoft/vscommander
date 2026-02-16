@@ -2,11 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { formatSizeComma, formatSizeHuman } from './helpers';
-
-const SPINNER_FRAMES = [
-    '\u28ff\u28f7', '\u28ff\u28ef', '\u28ff\u28df', '\u28ff\u287f', '\u28ff\u28bf', '\u287f\u28ff',
-    '\u28bf\u28ff', '\u28fb\u28ff', '\u28fd\u28ff', '\u28fe\u28ff', '\u28f7\u28ff', '\u28ff\u28fe',
-];
+import { SPINNER_FRAMES } from './visualPrimitives';
 
 export class DirectoryInfoProvider implements vscode.TextDocumentContentProvider {
     private _onDidChange = new vscode.EventEmitter<vscode.Uri>();

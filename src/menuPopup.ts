@@ -3,6 +3,7 @@ import { Theme, PanelSettings } from './settings';
 import { SortMode } from './types';
 import { Popup, PopupInputResult } from './popup';
 import { FrameBuffer } from './frameBuffer';
+import { CHECK_MARK } from './visualPrimitives';
 
 export interface DropdownItem {
     type: 'item' | 'separator';
@@ -458,7 +459,7 @@ export class MenuPopup extends Popup {
             fb.fill(row, 1, innerWidth, 1, ' ', itemStyle);
             fb.write(row, innerWidth + 1, DBOX.vertical, borderStyle);
 
-            const checkMark = item.checked ? '\u221a' : ' ';
+            const checkMark = item.checked ? CHECK_MARK : ' ';
             fb.write(row, checkCol, checkMark, itemStyle);
 
             fb.write(row, labelStart, label, itemStyle);

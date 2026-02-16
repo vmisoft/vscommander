@@ -1,14 +1,18 @@
+## Note: This extension is a technical preview only and is under active development, the majority of it's features are still in progress.
+
+Please request the missing features and/or report bugs here: https://github.com/vmisoft/vscommander/issues
+
 # <img src="/media/icon-color-flat.png" height="24"> VSCommander
 
-The missing yet essential cross-platform dual-panel file manager for Visual Studio Code, heavily inspired by [Far Manager](https://www.farmanager.com/), [Dos Navigator](https://www.ritlabs.com/en/products/dn/), [Volkov Commander](https://vc.vvv.kyiv.ua/), and of course [Norton Commander](https://en.wikipedia.org/wiki/Norton_Commander). It runs as a terminal overlay: your shell stays alive underneath, and you toggle the file panel on and off with `Ctrl+O`.
+The missing and essential cross-platform dual-panel file manager extension for Visual Studio Code inspired by [Far Manager](https://www.farmanager.com/), [Dos Navigator](https://www.ritlabs.com/en/products/dn/), [Volkov Commander](https://vc.vvv.kyiv.ua/), and [Norton Commander](https://en.wikipedia.org/wiki/Norton_Commander).
 
-Previously, a powerful editor was an extension to dual panel file manager. VSCommander is exactly the opposite paradigm that works well in the modern realities.
+Previously, a powerful editor was an extension to dual panel file manager. VSCommander is exactly the opposite paradigm that works well in the modern realities. The vision of the project is to replicate the classic look and feel of Far Manager while extending its functionality and keeping cross-platform support of modern *nix and Windows-compatible operating systems.
 
-The goal of the project - to preserve the natural look and feel of File Manager while extending its functionality when plactical, and constantly keeping support of modern *nix and Windows-compatible operating systems.
+The extension runs as a terminal overlay, you can toggle the file panel on and off with `Ctrl+O`.
+
+## The project is work in progress. Please send us feature requests and bug reports.
 
 ![VSCommander Screenshot](https://d2lkivouz33xmz.cloudfront.net/demo/screenshot.png)
-
-The project is a work in progress and not published to the marketplace yet.
 
 ## Features
 

@@ -7,6 +7,7 @@ import { DropdownControl, DropdownOption } from './dropdownControl';
 import { CheckboxControl } from './checkboxControl';
 import { ButtonGroup } from './buttonGroup';
 import { FrameBuffer } from './frameBuffer';
+import { ARROW_DOWN } from './visualPrimitives';
 
 export interface MkdirResult {
     dirName: string;
@@ -17,7 +18,6 @@ export interface MkdirResult {
 
 const DIALOG_HEIGHT = 10;
 const LABEL_WIDTH = 15;
-const ARROW_CHAR = '\u2193';
 
 export class MkdirPopup extends Popup {
     private nameInput: InputControl;
@@ -287,7 +287,7 @@ export class MkdirPopup extends Popup {
 
         // Row 2: name input
         fb.blit(boxRow + 2, boxCol + 2, this.nameInput.renderToBuffer(inputStyle, cursorStyle, this.focusIndex === 0));
-        fb.write(boxRow + 2, arrowCol, ARROW_CHAR, bodyStyle);
+        fb.write(boxRow + 2, arrowCol, ARROW_DOWN, bodyStyle);
 
         // Row 3: separator
         fb.drawSeparator(boxRow + 3, boxCol, w, bodyStyle, MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
@@ -298,13 +298,13 @@ export class MkdirPopup extends Popup {
         const dropFocused = this.focusIndex === 1;
         const dropFieldStyle = dropFocused ? t.dialogDropdown.idle : inputStyle;
         fb.blit(boxRow + 4, fieldCol, this.linkTypeDropdown.renderToBuffer(inputStyle, dropFieldStyle, dropFocused));
-        fb.write(boxRow + 4, arrowCol, ARROW_CHAR, bodyStyle);
+        fb.write(boxRow + 4, arrowCol, ARROW_DOWN, bodyStyle);
 
         // Row 5: target input
         fb.write(boxRow + 5, boxCol + 1, ' Target:      ', bodyStyle);
         fb.write(boxRow + 5, boxCol + 2, 'T', hotkeyStyle);
         fb.blit(boxRow + 5, fieldCol, this.targetInput.renderToBuffer(inputStyle, cursorStyle, this.focusIndex === 2));
-        fb.write(boxRow + 5, arrowCol, ARROW_CHAR, bodyStyle);
+        fb.write(boxRow + 5, arrowCol, ARROW_DOWN, bodyStyle);
 
         // Row 6: checkbox
         const cbFocused = this.focusIndex === 3;

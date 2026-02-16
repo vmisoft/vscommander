@@ -9,6 +9,7 @@ import {
     applyStyle, entryRenderStyle, truncatePath, formatClock,
     centerText, formatSizeComma, formatDate, computeStats,
 } from './helpers';
+import { SYMLINK_ARROW } from './visualPrimitives';
 
 export class Pane {
     cwd: string;
@@ -278,7 +279,7 @@ export class Pane {
                     out.push(applyStyle(style));
 
                     if (entry.isSymlink && colWidth >= 3) {
-                        const arrowStr = ' \u2192';
+                        const arrowStr = ' ' + SYMLINK_ARROW;
                         const maxName = colWidth - arrowStr.length;
                         const displayName = entry.name.slice(0, maxName);
                         const pad = ' '.repeat(Math.max(0, colWidth - displayName.length - arrowStr.length));
@@ -355,7 +356,7 @@ export class Pane {
         const right = sizeStr + '  ' + dateStr;
 
         if (entry.isSymlink) {
-            const arrow = ' \u2192 ';
+            const arrow = ' ' + SYMLINK_ARROW + ' ';
             const target = entry.linkTarget;
             const linkPart = arrow + target;
             const availForName = innerWidth - right.length - 2;
@@ -374,12 +375,12 @@ export class Pane {
                 displayLeft = nameAndLink;
             }
             const gap = ' '.repeat(Math.max(1, innerWidth - displayLeft.length - right.length));
-            const arrowIdx = displayLeft.indexOf('\u2192');
+            const arrowIdx = displayLeft.indexOf(SYMLINK_ARROW);
             const beforeArrow = displayLeft.slice(0, arrowIdx);
             const afterArrow = displayLeft.slice(arrowIdx + 1);
             return border + moveTo(layout.infoRow, geo.startCol) + DBOX.vertical
                 + content
-                + beforeArrow + applyStyle(t.symlink.idle) + '\u2192' + content + afterArrow
+                + beforeArrow + applyStyle(t.symlink.idle) + SYMLINK_ARROW + content + afterArrow
                 + gap + right
                 + border + moveTo(layout.infoRow, geo.startCol + geo.width - 1) + DBOX.vertical
                 + resetStyle();

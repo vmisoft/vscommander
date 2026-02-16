@@ -2,6 +2,7 @@ import { DBOX, BOX, MBOX } from './draw';
 import { Theme, TextStyle } from './settings';
 import { Popup, PopupInputResult } from './popup';
 import { FrameBuffer } from './frameBuffer';
+import { PROGRESS_FILLED, PROGRESS_EMPTY } from './visualPrimitives';
 
 export interface CopyProgressState {
     mode: 'copy' | 'move';
@@ -14,9 +15,6 @@ export interface CopyProgressState {
     currentPercent: number;
     totalPercent: number;
 }
-
-const FILLED = '\u2588';
-const EMPTY = '\u2591';
 
 export class ScanProgressPopup extends Popup {
     private mode: 'copy' | 'move' = 'copy';
@@ -284,7 +282,7 @@ function makeProgressBar(width: number, percent: number, showPercent: boolean): 
     }
     const clamped = Math.min(Math.max(percent, 0), 100);
     const pos = Math.floor(clamped * barWidth / 100);
-    return FILLED.repeat(pos) + EMPTY.repeat(barWidth - pos) + percentStr;
+    return PROGRESS_FILLED.repeat(pos) + PROGRESS_EMPTY.repeat(barWidth - pos) + percentStr;
 }
 
 function formatCounter(label: string, otherLabel: string,

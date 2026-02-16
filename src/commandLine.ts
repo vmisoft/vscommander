@@ -4,6 +4,7 @@ import { Layout } from './types';
 import { applyStyle } from './helpers';
 import { TerminalBuffer } from './terminalBuffer';
 import { PanelInputResult } from './panel';
+import { SPINNER_FRAMES, CURSOR_BLOCK } from './visualPrimitives';
 
 export interface CommandLineContext {
     cols: number;
@@ -29,11 +30,7 @@ export class CommandLine {
         const out: string[] = [];
 
         if (this.waitingMode) {
-            const spinnerFrames = [
-                '\u28ff\u28f7', '\u28ff\u28ef', '\u28ff\u28df', '\u28ff\u287f', '\u28ff\u28bf', '\u287f\u28ff',
-                '\u28bf\u28ff', '\u28fb\u28ff', '\u28fd\u28ff', '\u28fe\u28ff', '\u28f7\u28ff', '\u28ff\u28fe',
-            ];
-            const spinner = spinnerFrames[this.spinnerFrame % spinnerFrames.length];
+            const spinner = SPINNER_FRAMES[this.spinnerFrame % SPINNER_FRAMES.length];
             const display = (' ' + spinner + ' Running... ' + settings.toggleKey + ' for details').slice(0, cols);
             out.push(applyStyle(t.commandLineBusy.idle));
             out.push(moveTo(cmdRow, 1));
@@ -66,7 +63,7 @@ export class CommandLine {
         const cursorCol = termBuffer.getCursorCol() + 1;
         let out = moveTo(layout.cmdRow, cursorCol);
         if (this.cmdCursorVisible) {
-            out += applyStyle(t.commandLine.idle) + '\u2582' + resetStyle();
+            out += applyStyle(t.commandLine.idle) + CURSOR_BLOCK + resetStyle();
         } else {
             const termRow = termBuffer.getCursorRow();
             const content = termBuffer.getRow(termRow);

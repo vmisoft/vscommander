@@ -581,6 +581,50 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
+        if (matchesKeyBinding(data, 'Shift+F12')) {
+            pane.moveSelectedToTop(this.settings);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+PageUp')) {
+            pane.navigateUp(this.settings, pageCapacity);
+            return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+PageDown')) {
+            const entry = pane.entries[pane.cursor];
+            if (entry && entry.isDir) {
+                if (entry.name === '..') {
+                    pane.navigateUp(this.settings, pageCapacity);
+                } else {
+                    pane.navigateInto(entry, this.settings);
+                }
+                return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
+            }
+            return { action: 'none' };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+Enter')) {
+            const entry = pane.entries[pane.cursor];
+            if (entry && entry.name !== '..') {
+                this.shellInputLen += entry.name.length;
+                return { action: 'input', data: entry.name, redraw: '' };
+            }
+            return { action: 'none' };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+[')) {
+            const dir = this.left.cwd + path.sep;
+            this.shellInputLen += dir.length;
+            return { action: 'input', data: dir, redraw: '' };
+        }
+
+        if (matchesKeyBinding(data, 'Ctrl+]')) {
+            const dir = this.right.cwd + path.sep;
+            this.shellInputLen += dir.length;
+            return { action: 'input', data: dir, redraw: '' };
+        }
+
         if (matchesKeyBinding(data, 'Numpad*')) {
             pane.invertSelection();
             return { action: 'redraw', data: this.render() };
@@ -608,6 +652,135 @@ export class Panel {
 
         if (matchesKeyBinding(data, 'Ctrl+3')) {
             pane.colCount = 3;
+            return { action: 'redraw', data: this.render() };
+        }
+
+        // Shift+navigation: select/deselect range from old cursor to new cursor
+        if (matchesKeyBinding(data, 'Shift+Up')) {
+            if (pane.cursor > 0) {
+                const oldCursor = pane.cursor;
+                pane.cursor--;
+                pane.toggleSelectionRange(oldCursor, pane.cursor);
+                if (pane.cursor < pane.scroll) {
+                    pane.scroll = pane.cursor;
+                }
+            }
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+Down')) {
+            if (pane.cursor < pane.entries.length - 1) {
+                const oldCursor = pane.cursor;
+                pane.cursor++;
+                pane.toggleSelectionRange(oldCursor, pane.cursor);
+                if (pane.cursor >= pane.scroll + pageCapacity) {
+                    pane.scroll = pane.cursor - pageCapacity + 1;
+                }
+            }
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+Right')) {
+            const oldCursor = pane.cursor;
+            const relPos = pane.cursor - pane.scroll;
+            const currentCol = Math.floor(relPos / listHeight);
+
+            if (currentCol >= activePaneGeo.numCols - 1 || activePaneGeo.numCols === 1) {
+                const newCursor = Math.min(pane.entries.length - 1, pane.cursor + listHeight);
+                if (newCursor !== pane.cursor) {
+                    pane.cursor = newCursor;
+                    pane.scroll += listHeight;
+                    const maxScroll = Math.max(0, pane.entries.length - pageCapacity);
+                    if (pane.scroll > maxScroll) {
+                        pane.scroll = maxScroll;
+                    }
+                    if (pane.cursor < pane.scroll) {
+                        pane.cursor = pane.scroll;
+                    }
+                }
+            } else {
+                const newCursor = pane.cursor + listHeight;
+                pane.cursor = newCursor < pane.entries.length ? newCursor : pane.entries.length - 1;
+            }
+            pane.toggleSelectionRange(oldCursor, pane.cursor);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+Left')) {
+            const oldCursor = pane.cursor;
+            const relPos = pane.cursor - pane.scroll;
+            const currentCol = Math.floor(relPos / listHeight);
+
+            if (currentCol <= 0 || activePaneGeo.numCols === 1) {
+                const newCursor = Math.max(0, pane.cursor - listHeight);
+                if (newCursor !== pane.cursor) {
+                    pane.cursor = newCursor;
+                    pane.scroll -= listHeight;
+                    if (pane.scroll < 0) {
+                        pane.scroll = 0;
+                    }
+                    if (pane.cursor >= pane.scroll + pageCapacity) {
+                        pane.cursor = pane.scroll + pageCapacity - 1;
+                    }
+                }
+            } else {
+                const newCursor = pane.cursor - listHeight;
+                pane.cursor = newCursor >= 0 ? newCursor : 0;
+            }
+            pane.toggleSelectionRange(oldCursor, pane.cursor);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+PageUp')) {
+            const oldCursor = pane.cursor;
+            pane.scroll -= pageCapacity;
+            pane.cursor -= pageCapacity;
+            if (pane.scroll < 0) {
+                pane.scroll = 0;
+            }
+            if (pane.cursor < 0) {
+                pane.cursor = 0;
+            }
+            if (pane.cursor >= pane.scroll + pageCapacity) {
+                pane.cursor = pane.scroll + pageCapacity - 1;
+            }
+            pane.toggleSelectionRange(oldCursor, pane.cursor);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+PageDown')) {
+            const oldCursor = pane.cursor;
+            pane.scroll += pageCapacity;
+            pane.cursor += pageCapacity;
+            const maxScroll = Math.max(0, pane.entries.length - pageCapacity);
+            if (pane.scroll > maxScroll) {
+                pane.scroll = maxScroll;
+            }
+            if (pane.cursor >= pane.entries.length) {
+                pane.cursor = pane.entries.length - 1;
+            }
+            if (pane.cursor < pane.scroll) {
+                pane.cursor = pane.scroll;
+            }
+            pane.toggleSelectionRange(oldCursor, pane.cursor);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+Home')) {
+            const oldCursor = pane.cursor;
+            pane.cursor = 0;
+            pane.scroll = 0;
+            pane.toggleSelectionRange(oldCursor, pane.cursor);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+End')) {
+            const oldCursor = pane.cursor;
+            pane.cursor = Math.max(0, pane.entries.length - 1);
+            if (pane.cursor >= pane.scroll + pageCapacity) {
+                pane.scroll = pane.cursor - pageCapacity + 1;
+            }
+            pane.toggleSelectionRange(oldCursor, pane.cursor);
             return { action: 'redraw', data: this.render() };
         }
 

@@ -1,6 +1,8 @@
 import { Theme } from './settings';
 
-export type SortMode = 'name' | 'extension' | 'size' | 'date' | 'unsorted';
+export type SortMode = 'name' | 'extension' | 'size' | 'date' | 'unsorted'
+    | 'creationTime' | 'accessTime' | 'changeTime' | 'description'
+    | 'owner' | 'allocatedSize' | 'hardLinks' | 'streams' | 'streamSize';
 
 export interface DriveEntry {
     label: string;
@@ -18,6 +20,12 @@ export interface DirEntry {
     linkTarget: string;
     size: number;
     mtime: Date;
+    atime?: Date;
+    ctime?: Date;
+    birthtime?: Date;
+    nlink?: number;
+    blocks?: number;
+    uid?: number;
 }
 
 export interface PaneGeometry {

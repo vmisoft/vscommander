@@ -19,6 +19,7 @@ export class Pane {
     sortMode: SortMode = 'name';
     colCount: number;
     selected: Set<string> = new Set();
+    selectedToTop = false;
 
     constructor(cwd: string, settings: PanelSettings) {
         this.cwd = cwd;
@@ -33,6 +34,14 @@ export class Pane {
             this.selected.delete(entry.name);
         } else {
             this.selected.add(entry.name);
+        }
+    }
+
+    toggleSelectionRange(from: number, to: number): void {
+        const lo = Math.max(0, Math.min(from, to));
+        const hi = Math.min(this.entries.length - 1, Math.max(from, to));
+        for (let i = lo; i <= hi; i++) {
+            this.toggleSelection(i);
         }
     }
 
@@ -65,6 +74,33 @@ export class Pane {
         }
     }
 
+    moveSelectedToTop(settings: PanelSettings): void {
+        if (this.selectedToTop) {
+            this.selectedToTop = false;
+            Pane.sortEntries(this.entries, this.sortMode, settings.sortDirsFirst);
+            this.cursor = 0;
+            this.scroll = 0;
+            return;
+        }
+        if (this.selected.size === 0) return;
+        this.selectedToTop = true;
+        const dotdot: DirEntry[] = [];
+        const selectedEntries: DirEntry[] = [];
+        const rest: DirEntry[] = [];
+        for (const entry of this.entries) {
+            if (entry.name === '..') {
+                dotdot.push(entry);
+            } else if (this.selected.has(entry.name)) {
+                selectedEntries.push(entry);
+            } else {
+                rest.push(entry);
+            }
+        }
+        this.entries = [...dotdot, ...selectedEntries, ...rest];
+        this.cursor = 0;
+        this.scroll = 0;
+    }
+
     private patternToRegex(pattern: string): RegExp {
         const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
         const withWildcards = escaped.replace(/\*/g, '.*').replace(/\?/g, '.');
@@ -84,6 +120,7 @@ export class Pane {
     }
 
     refresh(settings: PanelSettings): void {
+        this.selectedToTop = false;
         // If cwd no longer exists, walk up to the nearest existing ancestor
         while (!fs.existsSync(this.cwd) && path.dirname(this.cwd) !== this.cwd) {
             this.cwd = path.dirname(this.cwd);
@@ -95,6 +132,7 @@ export class Pane {
     }
 
     navigateInto(entry: DirEntry, settings: PanelSettings): void {
+        this.selectedToTop = false;
         this.cwd = path.join(this.cwd, entry.name);
         this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
         this.cursor = 0;
@@ -103,6 +141,7 @@ export class Pane {
     }
 
     navigateUp(settings: PanelSettings, pageCapacity: number): void {
+        this.selectedToTop = false;
         const oldDirName = path.basename(this.cwd);
         this.cwd = path.dirname(this.cwd);
         this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
@@ -145,6 +184,12 @@ export class Pane {
                 const fullPath = path.join(dirPath, item.name);
                 let size = 0;
                 let mtime = new Date(0);
+                let atime = new Date(0);
+                let ctime = new Date(0);
+                let birthtime = new Date(0);
+                let nlink = 0;
+                let blocks = 0;
+                let uid = 0;
                 let isDir = item.isDirectory();
                 const isSymlink = item.isSymbolicLink();
                 let linkTarget = '';
@@ -152,6 +197,12 @@ export class Pane {
                     const stat = fs.statSync(fullPath);
                     size = stat.size;
                     mtime = stat.mtime;
+                    atime = stat.atime;
+                    ctime = stat.ctime;
+                    birthtime = stat.birthtime;
+                    nlink = stat.nlink;
+                    blocks = stat.blocks ?? 0;
+                    uid = stat.uid;
                     if (isSymlink) {
                         isDir = stat.isDirectory();
                         linkTarget = fs.readlinkSync(fullPath);
@@ -168,6 +219,12 @@ export class Pane {
                     linkTarget,
                     size,
                     mtime,
+                    atime,
+                    ctime,
+                    birthtime,
+                    nlink,
+                    blocks,
+                    uid,
                 });
             }
             Pane.sortEntries(entries, sortMode, settings.sortDirsFirst);
@@ -186,7 +243,7 @@ export class Pane {
         return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
     }
 
-    private static sortEntries(entries: DirEntry[], sortMode: SortMode, dirsFirst: boolean): void {
+    static sortEntries(entries: DirEntry[], sortMode: SortMode, dirsFirst: boolean): void {
         entries.sort((a, b) => {
             if (a.name === '..') return -1;
             if (b.name === '..') return 1;
@@ -202,6 +259,22 @@ export class Pane {
                     return a.size !== b.size ? a.size - b.size : a.name.localeCompare(b.name);
                 case 'date':
                     return b.mtime.getTime() - a.mtime.getTime() || a.name.localeCompare(b.name);
+                case 'creationTime':
+                    return (b.birthtime?.getTime() ?? 0) - (a.birthtime?.getTime() ?? 0) || a.name.localeCompare(b.name);
+                case 'accessTime':
+                    return (b.atime?.getTime() ?? 0) - (a.atime?.getTime() ?? 0) || a.name.localeCompare(b.name);
+                case 'changeTime':
+                    return (b.ctime?.getTime() ?? 0) - (a.ctime?.getTime() ?? 0) || a.name.localeCompare(b.name);
+                case 'owner':
+                    return (a.uid ?? 0) - (b.uid ?? 0) || a.name.localeCompare(b.name);
+                case 'allocatedSize':
+                    return (a.blocks ?? 0) - (b.blocks ?? 0) || a.name.localeCompare(b.name);
+                case 'hardLinks':
+                    return (b.nlink ?? 0) - (a.nlink ?? 0) || a.name.localeCompare(b.name);
+                case 'description':
+                case 'streams':
+                case 'streamSize':
+                    return a.name.localeCompare(b.name);
                 case 'unsorted':
                     return 0;
                 case 'name':
@@ -244,6 +317,26 @@ export class Pane {
         return out;
     }
 
+    private sortIndicator(): string {
+        switch (this.sortMode) {
+            case 'name': return 'n';
+            case 'extension': return 'x';
+            case 'date': return 'w';
+            case 'size': return 's';
+            case 'unsorted': return 'u';
+            case 'creationTime': return 'c';
+            case 'accessTime': return 'a';
+            case 'changeTime': return 'g';
+            case 'description': return 'd';
+            case 'owner': return 'o';
+            case 'allocatedSize': return 'a';
+            case 'hardLinks': return 'h';
+            case 'streams': return 'r';
+            case 'streamSize': return 'z';
+            default: return ' ';
+        }
+    }
+
     private renderColumnHeaders(ctx: PaneRenderContext): string {
         const { geo, layout, theme: t, isActive } = ctx;
         const border = applyStyle(t.border.idle);
@@ -252,7 +345,13 @@ export class Pane {
 
         out.push(border + moveTo(layout.headerRow, geo.startCol) + DBOX.vertical);
         for (let i = 0; i < geo.numCols; i++) {
-            out.push(header + centerText('Name', geo.colWidths[i]));
+            if (i === 0) {
+                const indicator = this.sortIndicator();
+                const w = geo.colWidths[i];
+                out.push(header + indicator + centerText('Name', w - 1));
+            } else {
+                out.push(header + centerText('Name', geo.colWidths[i]));
+            }
             out.push(resetStyle());
             if (i < geo.numCols - 1) {
                 out.push(border + BOX.vertical);

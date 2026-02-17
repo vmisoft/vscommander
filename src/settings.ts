@@ -330,6 +330,7 @@ const KEY_SEQUENCES: Record<string, string[]> = {
     'Shift+F9': ['\x1b[20;2~'],
     'Shift+F10': ['\x1b[21;2~'],
     'Shift+Delete': ['\x1b[3;2~'],
+    'Shift+F12': ['\x1b[24;2~'],
     'Alt+F1': ['\x1b[1;3P', '\x1b\x1bOP'],
     'Alt+F2': ['\x1b[1;3Q', '\x1b\x1bOQ'],
     'Alt+F3': ['\x1b[1;3R', '\x1b\x1bOR'],
@@ -356,6 +357,19 @@ const KEY_SEQUENCES: Record<string, string[]> = {
     'Numpad-': ['\x1bOm'],
     'Ctrl+Q': ['\x11'],
     'Ctrl+F12': ['\x1b[24;5~'],
+    'Shift+Up': ['\x1b[1;2A'],
+    'Shift+Down': ['\x1b[1;2B'],
+    'Shift+Right': ['\x1b[1;2C'],
+    'Shift+Left': ['\x1b[1;2D'],
+    'Shift+PageUp': ['\x1b[5;2~'],
+    'Shift+PageDown': ['\x1b[6;2~'],
+    'Shift+Home': ['\x1b[1;2H'],
+    'Shift+End': ['\x1b[1;2F'],
+    'Ctrl+PageUp': ['\x1b[5;5~'],
+    'Ctrl+PageDown': ['\x1b[6;5~'],
+    'Ctrl+Enter': ['\x1b[13;5u'],
+    'Ctrl+[': ['\x1b[91;5u'],
+    'Ctrl+]': ['\x1d', '\x1b[93;5u'],
 };
 
 export function matchesKeyBinding(data: string, keyName: string): boolean {

@@ -59,7 +59,7 @@ export class PopupTable {
     renderToBuffer(styles: PopupTableStyles, maxWidth?: number): FrameBuffer {
         if (this.rowCount === 0) return new FrameBuffer(0, 0);
 
-        const pad = 1;
+        const pad = 2;
         const pfx = this.numbered ? 2 : 0;
         const bodyStyle = styles.body.idle;
         const fixedPart = this.computeFixedPart();
@@ -170,7 +170,7 @@ export class PopupTable {
     }
 
     private estimateWidth(styles: PopupTableStyles): number {
-        const pad = 1;
+        const pad = 2;
         const pfx = this.numbered ? 2 : 0;
         const fixedPart = this.computeFixedPart();
         const primaryWidth = this.computePrimaryWidth(fixedPart, pfx);

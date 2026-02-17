@@ -21,3 +21,7 @@ export const CURSOR_BLOCK = '\u2582';
 
 // Symlink arrow
 export const SYMLINK_ARROW = '\u2192';
+
+// Sort direction triangles
+export const SORT_ASC = '\u25b2';
+export const SORT_DESC = '\u25bc';

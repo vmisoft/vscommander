@@ -1,4 +1,5 @@
 import { Theme } from './settings';
+import type { ArchiveHandle } from './archiveFs';
 
 export type SortMode = 'name' | 'extension' | 'size' | 'date' | 'unsorted'
     | 'creationTime' | 'accessTime' | 'changeTime' | 'description'
@@ -26,6 +27,20 @@ export interface DirEntry {
     nlink?: number;
     blocks?: number;
     uid?: number;
+    streamCount?: number;
+    streamTotalSize?: number;
+    description?: string;
+}
+
+export interface PaneState {
+    cwd: string;
+    sortMode: SortMode;
+    sortReversed: boolean;
+    sortDirsFirst: boolean;
+    colCount: number;
+    archiveHandle: ArchiveHandle | null;
+    archiveDir: string;
+    isVirtual: boolean;
 }
 
 export interface PaneGeometry {

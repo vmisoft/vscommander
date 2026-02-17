@@ -38,19 +38,19 @@ export interface Theme {
     searchBody: RenderStyle;
     searchInput: RenderStyle;
     searchCursor: RenderStyle;
-    driveBody: RenderStyle;
-    driveLabel: RenderStyle;
-    driveText: RenderStyle;
-    driveNumber: RenderStyle;
-    confirmBody: RenderStyle;
-    confirmButton: RenderStyle;
-    dialogBody: RenderStyle;
-    dialogInput: RenderStyle;
-    dialogInputCursor: RenderStyle;
-    dialogLabel: RenderStyle;
-    dialogButton: RenderStyle;
-    dialogDropdown: RenderStyle;
-    dialogHotkey: RenderStyle;
+    popupInfoBody: RenderStyle;
+    popupInfoInput: RenderStyle;
+    popupInfoInputCursor: RenderStyle;
+    popupInfoLabel: RenderStyle;
+    popupInfoButton: RenderStyle;
+    popupInfoDropdown: RenderStyle;
+    popupInfoHotkey: RenderStyle;
+    popupWarningBody: RenderStyle;
+    popupWarningButton: RenderStyle;
+    popupActionBody: RenderStyle;
+    popupActionLabel: RenderStyle;
+    popupActionText: RenderStyle;
+    popupActionNumber: RenderStyle;
     menuBar: RenderStyle;
     menuBarHotkey: RenderStyle;
     menuItem: RenderStyle;
@@ -96,25 +96,25 @@ export const DEFAULT_THEME: Theme = {
     searchBody: rs(s(BLACK, LIGHT_GRAY)),
     searchInput: rs(s(BLACK, DARK_TEAL)),
     searchCursor: rs(s(ROSE, DARK_TEAL)),
-    driveBody: rs(s(AQUA, DARK_TEAL)),
-    driveLabel: rs(s(BRIGHT_YELLOW, DARK_TEAL, true), s(BRIGHT_YELLOW, TEAL, true)),
-    driveText: rs(s(PURE_WHITE, DARK_TEAL), s(PURE_WHITE, TEAL)),
-    driveNumber: rs(s(BRIGHT_YELLOW, DARK_TEAL, true), s(BRIGHT_YELLOW, TEAL, true)),
-    confirmBody: rs(s(PURE_WHITE, DARK_RED)),
-    confirmButton: rs(s(PURE_WHITE, DARK_RED, true), s(BLACK, LIGHT_GRAY, true)),
-    dialogBody: rs(s(BLACK, LIGHT_GRAY, true)),
-    dialogInput: rs(s(BLACK, DARK_TEAL, true)),
-    dialogInputCursor: rs(s(ROSE, DARK_TEAL, true)),
-    dialogLabel: rs(s(BLACK, LIGHT_GRAY, true)),
-    dialogButton: rs(s(BLACK, LIGHT_GRAY, true), s(BLACK, DARK_TEAL, true)),
-    dialogDropdown: rs(s(PURE_WHITE, BLACK, true), s(BLACK, LIGHT_GRAY, true)),
-    dialogHotkey: rs(s(BRIGHT_YELLOW, LIGHT_GRAY, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
+    popupInfoBody: rs(s(BLACK, LIGHT_GRAY, true)),
+    popupInfoInput: rs(s(BLACK, DARK_TEAL, true)),
+    popupInfoInputCursor: rs(s(ROSE, DARK_TEAL, true)),
+    popupInfoLabel: rs(s(BLACK, LIGHT_GRAY, true)),
+    popupInfoButton: rs(s(BLACK, LIGHT_GRAY, true), s(BLACK, DARK_TEAL, true)),
+    popupInfoDropdown: rs(s(PURE_WHITE, BLACK, true), s(BLACK, LIGHT_GRAY, true)),
+    popupInfoHotkey: rs(s(BRIGHT_YELLOW, LIGHT_GRAY, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
+    popupWarningBody: rs(s(PURE_WHITE, DARK_RED)),
+    popupWarningButton: rs(s(PURE_WHITE, DARK_RED, true), s(BLACK, LIGHT_GRAY, true)),
+    popupActionBody: rs(s(PURE_WHITE, DARK_TEAL)),
+    popupActionLabel: rs(s(BRIGHT_YELLOW, DARK_TEAL, true), s(BRIGHT_YELLOW, TEAL, true)),
+    popupActionText: rs(s(PURE_WHITE, DARK_TEAL), s(PURE_WHITE, TEAL)),
+    popupActionNumber: rs(s(BRIGHT_YELLOW, DARK_TEAL, true), s(BRIGHT_YELLOW, TEAL, true)),
     menuBar: rs(s(BLACK, DARK_TEAL), s(BLACK, LIGHT_GRAY)),
     menuBarHotkey: rs(s(BRIGHT_YELLOW, DARK_TEAL), s(BRIGHT_YELLOW, LIGHT_GRAY)),
-    menuItem: rs(s(BLACK, LIGHT_GRAY), s(BLACK, DARK_TEAL)),
-    menuItemHotkey: rs(s(BRIGHT_YELLOW, LIGHT_GRAY), s(BRIGHT_YELLOW, DARK_TEAL)),
-    menuItemDisabled: rs(s(GREY, LIGHT_GRAY)),
-    menuBorder: rs(s(BLACK, LIGHT_GRAY)),
+    menuItem: rs(s(PURE_WHITE, DARK_TEAL), s(PURE_WHITE, TEAL)),
+    menuItemHotkey: rs(s(BRIGHT_YELLOW, DARK_TEAL, true), s(BRIGHT_YELLOW, TEAL, true)),
+    menuItemDisabled: rs(s(GREY, DARK_TEAL)),
+    menuBorder: rs(s(PURE_WHITE, DARK_TEAL)),
     selectedFile: rs(s(BRIGHT_YELLOW, DARK_BLUE, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
     selectedDir: rs(s(BRIGHT_YELLOW, DARK_BLUE, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
     symlink: rs(s(BRIGHT_YELLOW, DARK_BLUE), s(BRIGHT_YELLOW, DARK_TEAL)),
@@ -159,25 +159,25 @@ export const VSCODE_DARK_THEME: Theme = {
     searchBody: rs(s(A0, A7)),
     searchInput: rs(s(D, A7)),
     searchCursor: rs(s(A1, A7)),
-    driveBody: rs(s(A0, A7)),
-    driveLabel: rs(s(A11, A7, true), s(A11, A6, true)),
-    driveText: rs(s(A0, A7), s(A0, A6)),
-    driveNumber: rs(s(A11, A7, true), s(A11, A6, true)),
-    confirmBody: rs(s(A15, A1)),
-    confirmButton: rs(s(A15, A1, true), s(A0, A7, true)),
-    dialogBody: rs(s(A0, A7, true)),
-    dialogInput: rs(s(A0, A6, true)),
-    dialogInputCursor: rs(s(A1, A6, true)),
-    dialogLabel: rs(s(A0, A7, true)),
-    dialogButton: rs(s(A0, A7, true), s(A0, A6, true)),
-    dialogDropdown: rs(s(A15, A0, true), s(A0, A7, true)),
-    dialogHotkey: rs(s(A3, A7, true), s(A3, A6, true)),
+    popupInfoBody: rs(s(A0, A7, true)),
+    popupInfoInput: rs(s(A0, A6, true)),
+    popupInfoInputCursor: rs(s(A1, A6, true)),
+    popupInfoLabel: rs(s(A0, A7, true)),
+    popupInfoButton: rs(s(A0, A7, true), s(A0, A6, true)),
+    popupInfoDropdown: rs(s(A15, A0, true), s(A0, A7, true)),
+    popupInfoHotkey: rs(s(A3, A7, true), s(A3, A6, true)),
+    popupWarningBody: rs(s(A15, A1)),
+    popupWarningButton: rs(s(A15, A1, true), s(A0, A7, true)),
+    popupActionBody: rs(s(A0, A7)),
+    popupActionLabel: rs(s(A11, A7, true), s(A11, A6, true)),
+    popupActionText: rs(s(A0, A7), s(A0, A6)),
+    popupActionNumber: rs(s(A11, A7, true), s(A11, A6, true)),
     menuBar: rs(s(A0, A6), s(A0, A7)),
     menuBarHotkey: rs(s(A3, A6), s(A3, A7)),
-    menuItem: rs(s(A0, A7), s(A0, A6)),
-    menuItemHotkey: rs(s(A3, A7), s(A3, A6)),
-    menuItemDisabled: rs(s(A8, A7)),
-    menuBorder: rs(s(A0, A7)),
+    menuItem: rs(s(A0, A6), s(A0, A7)),
+    menuItemHotkey: rs(s(A11, A6, true), s(A11, A7, true)),
+    menuItemDisabled: rs(s(A8, A6)),
+    menuBorder: rs(s(A0, A6)),
     selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
     selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
     symlink: rs(s(A11, D), s(A11, A7)),
@@ -203,25 +203,25 @@ export const VSCODE_LIGHT_THEME: Theme = {
     searchBody: rs(s(A0, A15)),
     searchInput: rs(s(A0, A7)),
     searchCursor: rs(s(A1, A7)),
-    driveBody: rs(s(A0, A7)),
-    driveLabel: rs(s(A3, A7, true), s(A3, A14, true)),
-    driveText: rs(s(A0, A7), s(A0, A14)),
-    driveNumber: rs(s(A3, A7, true), s(A3, A14, true)),
-    confirmBody: rs(s(A15, A1)),
-    confirmButton: rs(s(A15, A1, true), s(A0, A15, true)),
-    dialogBody: rs(s(A0, A15, true)),
-    dialogInput: rs(s(A0, A14, true)),
-    dialogInputCursor: rs(s(A1, A14, true)),
-    dialogLabel: rs(s(A0, A15, true)),
-    dialogButton: rs(s(A0, A15, true), s(A0, A14, true)),
-    dialogDropdown: rs(s(A0, A15, true), s(A15, A0, true)),
-    dialogHotkey: rs(s(A3, A15, true), s(A3, A14, true)),
+    popupInfoBody: rs(s(A0, A15, true)),
+    popupInfoInput: rs(s(A0, A14, true)),
+    popupInfoInputCursor: rs(s(A1, A14, true)),
+    popupInfoLabel: rs(s(A0, A15, true)),
+    popupInfoButton: rs(s(A0, A15, true), s(A0, A14, true)),
+    popupInfoDropdown: rs(s(A0, A15, true), s(A15, A0, true)),
+    popupInfoHotkey: rs(s(A3, A15, true), s(A3, A14, true)),
+    popupWarningBody: rs(s(A15, A1)),
+    popupWarningButton: rs(s(A15, A1, true), s(A0, A15, true)),
+    popupActionBody: rs(s(A0, A7)),
+    popupActionLabel: rs(s(A3, A7, true), s(A3, A14, true)),
+    popupActionText: rs(s(A0, A7), s(A0, A14)),
+    popupActionNumber: rs(s(A3, A7, true), s(A3, A14, true)),
     menuBar: rs(s(A0, A14), s(A0, A15)),
     menuBarHotkey: rs(s(A3, A14), s(A3, A15)),
-    menuItem: rs(s(A0, A15), s(A0, A14)),
-    menuItemHotkey: rs(s(A3, A15), s(A3, A14)),
-    menuItemDisabled: rs(s(A8, A15)),
-    menuBorder: rs(s(A0, A15)),
+    menuItem: rs(s(A0, A14), s(A0, A15)),
+    menuItemHotkey: rs(s(A3, A14, true), s(A3, A15, true)),
+    menuItemDisabled: rs(s(A8, A14)),
+    menuBorder: rs(s(A0, A14)),
     selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
     selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
     symlink: rs(s(A3, D), s(A3, A7)),
@@ -330,6 +330,7 @@ const KEY_SEQUENCES: Record<string, string[]> = {
     'Shift+F9': ['\x1b[20;2~'],
     'Shift+F10': ['\x1b[21;2~'],
     'Shift+Delete': ['\x1b[3;2~'],
+    'Shift+F11': ['\x1b[23;2~'],
     'Shift+F12': ['\x1b[24;2~'],
     'Alt+F1': ['\x1b[1;3P', '\x1b\x1bOP'],
     'Alt+F2': ['\x1b[1;3Q', '\x1b\x1bOQ'],
@@ -385,7 +386,10 @@ export function getFKeyNumber(keyName: string): number | undefined {
 export interface PanelSettings {
     showDotfiles: boolean;
     clockEnabled: boolean;
+    sortMode: string;
+    sortReversed: boolean;
     sortDirsFirst: boolean;
+    useSortGroups: boolean;
     panelColumns: number;
     theme: Theme;
     baseTheme: Theme;
@@ -402,7 +406,10 @@ export interface PanelSettings {
 export const DEFAULT_SETTINGS: PanelSettings = {
     showDotfiles: true,
     clockEnabled: true,
+    sortMode: 'name',
+    sortReversed: false,
     sortDirsFirst: true,
+    useSortGroups: false,
     panelColumns: 2,
     theme: DEFAULT_THEME,
     baseTheme: DEFAULT_THEME,
@@ -446,10 +453,10 @@ export const THEME_KEYS: (keyof Theme)[] = [
     'commandLine', 'commandLineBusy', 'clock',
     'fkeyNum', 'fkeyLabel', 'fkeyLabelInactive',
     'searchBody', 'searchInput', 'searchCursor',
-    'driveBody', 'driveLabel', 'driveText', 'driveNumber',
-    'confirmBody', 'confirmButton',
-    'dialogBody', 'dialogInput', 'dialogInputCursor', 'dialogLabel',
-    'dialogButton', 'dialogDropdown', 'dialogHotkey',
+    'popupInfoBody', 'popupInfoInput', 'popupInfoInputCursor', 'popupInfoLabel',
+    'popupInfoButton', 'popupInfoDropdown', 'popupInfoHotkey',
+    'popupWarningBody', 'popupWarningButton',
+    'popupActionBody', 'popupActionLabel', 'popupActionText', 'popupActionNumber',
     'menuBar', 'menuBarHotkey', 'menuItem', 'menuItemHotkey',
     'menuItemDisabled', 'menuBorder',
     'selectedFile', 'selectedDir', 'symlink',

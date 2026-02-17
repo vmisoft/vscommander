@@ -122,7 +122,7 @@ export class ConfirmPopup extends Popup {
         const { title, bodyLines } = this.config;
         const t = theme;
         const isWarning = this.config.warning !== false;
-        const bodyStyle = isWarning ? t.confirmBody.idle : t.dialogBody.idle;
+        const bodyStyle = isWarning ? t.popupWarningBody.idle : t.popupInfoBody.idle;
 
         const boxWidth = this.computeBoxWidth();
         const innerWidth = boxWidth - 2;
@@ -157,9 +157,9 @@ export class ConfirmPopup extends Popup {
             MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
 
         const btnRow = sepRow + 1;
-        const btnBody = isWarning ? t.confirmBody.idle : t.dialogBody.idle;
-        const btnIdle = isWarning ? t.confirmButton.idle : t.dialogButton.idle;
-        const btnSel = isWarning ? t.confirmButton.selected : t.dialogButton.selected;
+        const btnBody = isWarning ? t.popupWarningBody.idle : t.popupInfoBody.idle;
+        const btnIdle = isWarning ? t.popupWarningButton.idle : t.popupInfoButton.idle;
+        const btnSel = isWarning ? t.popupWarningButton.selected : t.popupInfoButton.selected;
         fb.blit(btnRow, this.padH + 1, this.buttonGroup.renderToBuffer(
             innerWidth, btnBody, btnIdle, btnSel, true));
 

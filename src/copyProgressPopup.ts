@@ -71,7 +71,7 @@ export class ScanProgressPopup extends Popup {
     }
 
     override renderToBuffer(theme: Theme): FrameBuffer {
-        const bodyStyle = theme.dialogBody.idle;
+        const bodyStyle = theme.popupInfoBody.idle;
 
         const boxWidth = ScanProgressPopup.BOX_WIDTH;
         const textWidth = ScanProgressPopup.TEXT_WIDTH;
@@ -304,7 +304,7 @@ export class CopyProgressPopup extends Popup {
     override renderToBuffer(theme: Theme): FrameBuffer {
         if (this.paused) return this.renderPausedBuffer(theme);
 
-        const bodyStyle = theme.dialogBody.idle;
+        const bodyStyle = theme.popupInfoBody.idle;
 
         const boxWidth = CopyProgressPopup.BOX_WIDTH;
         const textWidth = CopyProgressPopup.TEXT_WIDTH;
@@ -374,7 +374,7 @@ export class CopyProgressPopup extends Popup {
     }
 
     private renderPausedBuffer(theme: Theme): FrameBuffer {
-        const bodyStyle = theme.confirmBody.idle;
+        const bodyStyle = theme.popupWarningBody.idle;
         const title = this.state.mode === 'move' ? 'Move' : 'Copy';
 
         const btnWidth = this.pauseButtonGroup ? this.pauseButtonGroup.totalWidth + 6 : 0;
@@ -414,8 +414,8 @@ export class CopyProgressPopup extends Popup {
         if (this.pauseButtonGroup) {
             const innerWidth = boxWidth - 2;
             fb.blit(this.padV + 8, this.padH + 1, this.pauseButtonGroup.renderToBuffer(
-                innerWidth, theme.confirmBody.idle, theme.confirmButton.idle,
-                theme.confirmButton.selected, true));
+                innerWidth, theme.popupWarningBody.idle, theme.popupWarningButton.idle,
+                theme.popupWarningButton.selected, true));
         }
 
         return fb;
@@ -480,7 +480,7 @@ export class DeleteProgressPopup extends Popup {
     }
 
     override renderToBuffer(theme: Theme): FrameBuffer {
-        const bodyStyle = theme.dialogBody.idle;
+        const bodyStyle = theme.popupInfoBody.idle;
 
         const boxWidth = DeleteProgressPopup.BOX_WIDTH;
         const textWidth = DeleteProgressPopup.TEXT_WIDTH;

@@ -214,9 +214,9 @@ export class CopyMovePopup extends Popup {
         const totalH = DIALOG_HEIGHT + 2 * this.padV;
         const boxRow = this.padV;
         const boxCol = this.padH;
-        const bodyStyle = t.dialogBody.idle;
-        const inputStyle = t.dialogInput.idle;
-        const cursorStyle = t.dialogInputCursor.idle;
+        const bodyStyle = t.popupInfoBody.idle;
+        const inputStyle = t.popupInfoInput.idle;
+        const cursorStyle = t.popupInfoInputCursor.idle;
         const fieldCol = boxCol + 1 + LABEL_WIDTH;
 
         const title = this.mode === 'copy' ? 'Copy' : 'Rename or move';
@@ -238,7 +238,7 @@ export class CopyMovePopup extends Popup {
                 ? ' Copy ' + this.sourceFiles.length + ' files to:'
                 : ' Move ' + this.sourceFiles.length + ' files to:';
         }
-        fb.write(boxRow + 1, boxCol + 1, desc + ' '.repeat(Math.max(0, innerW - desc.length)), t.dialogLabel.idle);
+        fb.write(boxRow + 1, boxCol + 1, desc + ' '.repeat(Math.max(0, innerW - desc.length)), t.popupInfoLabel.idle);
 
         fb.blit(boxRow + 2, boxCol + 2, this.targetInput.renderToBuffer(inputStyle, cursorStyle, this.focusIndex === 0));
 
@@ -246,17 +246,17 @@ export class CopyMovePopup extends Popup {
 
         fb.write(boxRow + 4, boxCol + 1, ' If file exists: ', bodyStyle);
         const dropFocused = this.focusIndex === 1;
-        const dropFieldStyle = dropFocused ? t.dialogDropdown.idle : inputStyle;
+        const dropFieldStyle = dropFocused ? t.popupInfoDropdown.idle : inputStyle;
         fb.blit(boxRow + 4, fieldCol, this.overwriteDropdown.renderToBuffer(inputStyle, dropFieldStyle, dropFocused));
 
         fb.drawSeparator(boxRow + 5, boxCol, w, bodyStyle, MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
 
         const btnFocused = this.focusIndex === 2;
-        fb.blit(boxRow + 6, boxCol + 1, this.buttons.renderToBuffer(innerW, t.dialogBody.idle, t.dialogButton.idle, t.dialogButton.selected, btnFocused));
+        fb.blit(boxRow + 6, boxCol + 1, this.buttons.renderToBuffer(innerW, t.popupInfoBody.idle, t.popupInfoButton.idle, t.popupInfoButton.selected, btnFocused));
 
         if (this.overwriteDropdown.isOpen) {
             fb.blit(boxRow + 5, fieldCol - 1, this.overwriteDropdown.renderPopupToBuffer(
-                t.dialogBody.idle, t.dialogInput.idle, t.dialogDropdown.selected
+                t.popupInfoBody.idle, t.popupInfoInput.idle, t.popupInfoDropdown.selected
             ));
         }
 
@@ -278,8 +278,8 @@ export class CopyMovePopup extends Popup {
         const boxStartRow = this.screenRow + this.padV;
         const boxStartCol = this.screenCol + this.padH;
         const nameCol = boxStartCol + 2;
-        const inputStyle = t.dialogInput.idle;
-        const cursorStyle = t.dialogInputCursor.idle;
+        const inputStyle = t.popupInfoInput.idle;
+        const cursorStyle = t.popupInfoInputCursor.idle;
         let out = this.targetInput.renderBlink(boxStartRow + 2, nameCol, inputStyle, cursorStyle);
         out += hideCursor();
         return out;

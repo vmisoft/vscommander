@@ -363,7 +363,7 @@ export class OverwritePopup extends Popup {
     }
 
     private renderOverwriteBuffer(theme: Theme): FrameBuffer {
-        const bodyStyle = theme.confirmBody.idle;
+        const bodyStyle = theme.popupWarningBody.idle;
         const boxWidth = BOX_WIDTH;
         const textWidth = TEXT_WIDTH;
 
@@ -409,15 +409,15 @@ export class OverwritePopup extends Popup {
         drawSingleSeparator(fb, this.padV + 6, this.padH, boxWidth, bodyStyle);
 
         const checkFocused = this.focusIndex === 0;
-        const checkStyle = checkFocused ? theme.confirmButton.selected : bodyStyle;
+        const checkStyle = checkFocused ? theme.popupWarningButton.selected : bodyStyle;
         fb.blit(this.padV + 7, textCol, this.checkbox.renderToBuffer(bodyStyle, checkStyle, checkFocused));
 
         drawSingleSeparator(fb, this.padV + 8, this.padH, boxWidth, bodyStyle);
 
         const btnFocused = this.focusIndex === 1;
-        const btnBody = theme.confirmBody.idle;
-        const btnIdle = theme.confirmButton.idle;
-        const btnSel = theme.confirmButton.selected;
+        const btnBody = theme.popupWarningBody.idle;
+        const btnIdle = theme.popupWarningButton.idle;
+        const btnSel = theme.popupWarningButton.selected;
 
         fb.blit(this.padV + 9, this.padH + 1, renderButtonRow(
             this.row1Labels, innerWidth, btnBody, btnIdle, btnSel,
@@ -431,7 +431,7 @@ export class OverwritePopup extends Popup {
     }
 
     private renderRenameBuffer(theme: Theme): FrameBuffer {
-        const bodyStyle = theme.dialogBody.idle;
+        const bodyStyle = theme.popupInfoBody.idle;
         const boxWidth = BOX_WIDTH;
 
         //  Row 0: top border "Rename"
@@ -453,16 +453,16 @@ export class OverwritePopup extends Popup {
 
         fb.write(this.padV + 1, textCol, 'New name:', bodyStyle);
 
-        const inputStyle = theme.dialogInput.idle;
-        const cursorStyle = theme.dialogInputCursor.idle;
+        const inputStyle = theme.popupInfoInput.idle;
+        const cursorStyle = theme.popupInfoInputCursor.idle;
         fb.blit(this.padV + 2, textCol, this.renameInput.renderToBuffer(
             inputStyle, cursorStyle, this.renameFocusIndex === 0));
 
         drawSingleSeparator(fb, this.padV + 3, this.padH, boxWidth, bodyStyle);
 
         fb.blit(this.padV + 4, this.padH + 1, this.renameButtonGroup.renderToBuffer(
-            innerWidth, theme.dialogBody.idle, theme.dialogButton.idle,
-            theme.dialogButton.selected, this.renameFocusIndex === 1));
+            innerWidth, theme.popupInfoBody.idle, theme.popupInfoButton.idle,
+            theme.popupInfoButton.selected, this.renameFocusIndex === 1));
 
         return fb;
     }
@@ -486,8 +486,8 @@ export class OverwritePopup extends Popup {
         const boxStartRow = this.screenRow + this.padV;
         const boxStartCol = this.screenCol + this.padH;
         const nameCol = boxStartCol + 2;
-        const inputStyle = theme.dialogInput.idle;
-        const cursorStyle = theme.dialogInputCursor.idle;
+        const inputStyle = theme.popupInfoInput.idle;
+        const cursorStyle = theme.popupInfoInputCursor.idle;
         let out = this.renameInput.renderBlink(boxStartRow + 2, nameCol, inputStyle, cursorStyle);
         out += hideCursor();
         return out;

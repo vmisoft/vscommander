@@ -4,12 +4,15 @@ import {
     resetStyle, moveTo, DBOX, MBOX, BOX, bgColor
 } from './draw';
 import { PanelSettings, Theme } from './settings';
-import { DirEntry, PaneGeometry, Layout, PaneRenderContext, SortMode } from './types';
+import { DirEntry, PaneGeometry, Layout, PaneRenderContext, SortMode, PaneState } from './types';
 import {
     applyStyle, entryRenderStyle, truncatePath, formatClock,
     centerText, formatSizeComma, formatDate, computeStats,
 } from './helpers';
 import { SYMLINK_ARROW } from './visualPrimitives';
+import { getStreamInfo } from './ntfsStreams';
+import { loadDescriptions } from './descriptions';
+import { ArchiveHandle, filterArchiveDir } from './archiveFs';
 
 export class Pane {
     cwd: string;
@@ -17,14 +20,46 @@ export class Pane {
     cursor = 0;
     scroll = 0;
     sortMode: SortMode = 'name';
+    sortReversed = false;
+    sortDirsFirst = true;
     colCount: number;
     selected: Set<string> = new Set();
     selectedToTop = false;
+    archiveHandle: ArchiveHandle | null = null;
+    archiveDir = '';
+    isVirtual = false;
 
     constructor(cwd: string, settings: PanelSettings) {
         this.cwd = cwd;
         this.colCount = settings.panelColumns;
-        this.entries = Pane.readDir(cwd, settings, this.sortMode);
+        this.sortMode = settings.sortMode as SortMode;
+        this.sortReversed = settings.sortReversed;
+        this.sortDirsFirst = settings.sortDirsFirst;
+        this.entries = Pane.readDir(cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+    }
+
+    getState(): PaneState {
+        return {
+            cwd: this.cwd,
+            sortMode: this.sortMode,
+            sortReversed: this.sortReversed,
+            sortDirsFirst: this.sortDirsFirst,
+            colCount: this.colCount,
+            archiveHandle: this.archiveHandle,
+            archiveDir: this.archiveDir,
+            isVirtual: this.isVirtual,
+        };
+    }
+
+    setState(s: PaneState): void {
+        this.cwd = s.cwd;
+        this.sortMode = s.sortMode;
+        this.sortReversed = s.sortReversed;
+        this.sortDirsFirst = s.sortDirsFirst;
+        this.colCount = s.colCount;
+        this.archiveHandle = s.archiveHandle;
+        this.archiveDir = s.archiveDir;
+        this.isVirtual = s.isVirtual;
     }
 
     toggleSelection(idx: number): void {
@@ -77,7 +112,7 @@ export class Pane {
     moveSelectedToTop(settings: PanelSettings): void {
         if (this.selectedToTop) {
             this.selectedToTop = false;
-            Pane.sortEntries(this.entries, this.sortMode, settings.sortDirsFirst);
+            Pane.sortEntries(this.entries, this.sortMode, this.sortDirsFirst, this.sortReversed);
             this.cursor = 0;
             this.scroll = 0;
             return;
@@ -121,20 +156,25 @@ export class Pane {
 
     refresh(settings: PanelSettings): void {
         this.selectedToTop = false;
-        // If cwd no longer exists, walk up to the nearest existing ancestor
+        if (this.isVirtual) return;
+        if (this.isInArchive) {
+            this.entries = filterArchiveDir(this.archiveHandle!.entries, this.archiveDir, this.sortMode, this.sortReversed, this.sortDirsFirst);
+            this.cursor = Math.min(this.cursor, Math.max(0, this.entries.length - 1));
+            return;
+        }
         while (!fs.existsSync(this.cwd) && path.dirname(this.cwd) !== this.cwd) {
             this.cwd = path.dirname(this.cwd);
             this.cursor = 0;
             this.scroll = 0;
         }
-        this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
+        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
         this.cursor = Math.min(this.cursor, Math.max(0, this.entries.length - 1));
     }
 
     navigateInto(entry: DirEntry, settings: PanelSettings): void {
         this.selectedToTop = false;
         this.cwd = path.join(this.cwd, entry.name);
-        this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
+        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
         this.cursor = 0;
         this.scroll = 0;
         this.selected.clear();
@@ -144,7 +184,7 @@ export class Pane {
         this.selectedToTop = false;
         const oldDirName = path.basename(this.cwd);
         this.cwd = path.dirname(this.cwd);
-        this.entries = Pane.readDir(this.cwd, settings, this.sortMode);
+        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
         const idx = this.entries.findIndex(e => e.name === oldDirName);
         this.cursor = idx >= 0 ? idx : 0;
         this.ensureCursorVisible(pageCapacity);
@@ -156,6 +196,63 @@ export class Pane {
             this.scroll = this.cursor;
         } else if (this.cursor >= this.scroll + pageCapacity) {
             this.scroll = this.cursor - pageCapacity + 1;
+        }
+    }
+
+    get isInArchive(): boolean {
+        return this.archiveHandle !== null;
+    }
+
+    enterArchive(handle: ArchiveHandle): void {
+        this.archiveHandle = handle;
+        this.archiveDir = '';
+        this.entries = filterArchiveDir(handle.entries, '', this.sortMode, this.sortReversed, this.sortDirsFirst);
+        this.cursor = 0;
+        this.scroll = 0;
+        this.selected.clear();
+    }
+
+    navigateArchiveDir(dirName: string): void {
+        this.archiveDir = this.archiveDir ? this.archiveDir + '/' + dirName : dirName;
+        this.entries = filterArchiveDir(this.archiveHandle!.entries, this.archiveDir, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        this.cursor = 0;
+        this.scroll = 0;
+        this.selected.clear();
+    }
+
+    navigateArchiveUp(settings: PanelSettings, pageCapacity: number): boolean {
+        if (!this.archiveDir) return false;
+        const oldDir = this.archiveDir.split('/').pop()!;
+        const lastSlash = this.archiveDir.lastIndexOf('/');
+        this.archiveDir = lastSlash >= 0 ? this.archiveDir.slice(0, lastSlash) : '';
+        this.entries = filterArchiveDir(this.archiveHandle!.entries, this.archiveDir, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        const idx = this.entries.findIndex(e => e.name === oldDir);
+        this.cursor = idx >= 0 ? idx : 0;
+        this.ensureCursorVisible(pageCapacity);
+        this.selected.clear();
+        return true;
+    }
+
+    exitArchive(settings: PanelSettings): void {
+        const archiveName = path.basename(this.archiveHandle!.archivePath);
+        this.archiveHandle!.close();
+        this.archiveHandle = null;
+        this.archiveDir = '';
+        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        const idx = this.entries.findIndex(e => e.name === archiveName);
+        this.cursor = idx >= 0 ? idx : 0;
+        this.selected.clear();
+    }
+
+    getArchiveEntryPath(entryName: string): string {
+        return this.archiveDir ? this.archiveDir + '/' + entryName : entryName;
+    }
+
+    refreshArchiveView(): void {
+        if (!this.archiveHandle) return;
+        this.entries = filterArchiveDir(this.archiveHandle.entries, this.archiveDir, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        if (this.cursor >= this.entries.length) {
+            this.cursor = Math.max(0, this.entries.length - 1);
         }
     }
 
@@ -171,7 +268,7 @@ export class Pane {
         return out.join('');
     }
 
-    static readDir(dirPath: string, settings: PanelSettings, sortMode: SortMode = 'name'): DirEntry[] {
+    static readDir(dirPath: string, settings: PanelSettings, sortMode: SortMode = 'name', sortReversed = false, sortDirsFirst = true): DirEntry[] {
         try {
             const items = fs.readdirSync(dirPath, { withFileTypes: true });
             const entries: DirEntry[] = [];
@@ -227,7 +324,25 @@ export class Pane {
                     uid,
                 });
             }
-            Pane.sortEntries(entries, sortMode, settings.sortDirsFirst);
+            if (sortMode === 'streams' || sortMode === 'streamSize') {
+                for (const entry of entries) {
+                    if (entry.name === '..') continue;
+                    const info = getStreamInfo(path.join(dirPath, entry.name));
+                    if (info) {
+                        entry.streamCount = info.streamCount;
+                        entry.streamTotalSize = info.streamTotalSize;
+                    }
+                }
+            }
+            if (sortMode === 'description') {
+                const descMap = loadDescriptions(dirPath, entries);
+                for (const entry of entries) {
+                    if (entry.name === '..') continue;
+                    const desc = descMap.get(entry.name.toLowerCase());
+                    if (desc) entry.description = desc;
+                }
+            }
+            Pane.sortEntries(entries, sortMode, sortDirsFirst, sortReversed);
             return entries;
         } catch {
             const fallback: DirEntry[] = [];
@@ -243,7 +358,8 @@ export class Pane {
         return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
     }
 
-    static sortEntries(entries: DirEntry[], sortMode: SortMode, dirsFirst: boolean): void {
+    static sortEntries(entries: DirEntry[], sortMode: SortMode, dirsFirst: boolean, reversed = false): void {
+        const rev = reversed ? -1 : 1;
         entries.sort((a, b) => {
             if (a.name === '..') return -1;
             if (b.name === '..') return 1;
@@ -253,33 +369,38 @@ export class Pane {
                     const extA = Pane.getExtension(a.name);
                     const extB = Pane.getExtension(b.name);
                     const cmp = extA.localeCompare(extB);
-                    return cmp !== 0 ? cmp : a.name.localeCompare(b.name);
+                    return rev * (cmp !== 0 ? cmp : a.name.localeCompare(b.name));
                 }
                 case 'size':
-                    return a.size !== b.size ? a.size - b.size : a.name.localeCompare(b.name);
+                    return rev * (a.size !== b.size ? a.size - b.size : a.name.localeCompare(b.name));
                 case 'date':
-                    return b.mtime.getTime() - a.mtime.getTime() || a.name.localeCompare(b.name);
+                    return rev * (b.mtime.getTime() - a.mtime.getTime() || a.name.localeCompare(b.name));
                 case 'creationTime':
-                    return (b.birthtime?.getTime() ?? 0) - (a.birthtime?.getTime() ?? 0) || a.name.localeCompare(b.name);
+                    return rev * ((b.birthtime?.getTime() ?? 0) - (a.birthtime?.getTime() ?? 0) || a.name.localeCompare(b.name));
                 case 'accessTime':
-                    return (b.atime?.getTime() ?? 0) - (a.atime?.getTime() ?? 0) || a.name.localeCompare(b.name);
+                    return rev * ((b.atime?.getTime() ?? 0) - (a.atime?.getTime() ?? 0) || a.name.localeCompare(b.name));
                 case 'changeTime':
-                    return (b.ctime?.getTime() ?? 0) - (a.ctime?.getTime() ?? 0) || a.name.localeCompare(b.name);
+                    return rev * ((b.ctime?.getTime() ?? 0) - (a.ctime?.getTime() ?? 0) || a.name.localeCompare(b.name));
                 case 'owner':
-                    return (a.uid ?? 0) - (b.uid ?? 0) || a.name.localeCompare(b.name);
+                    return rev * ((a.uid ?? 0) - (b.uid ?? 0) || a.name.localeCompare(b.name));
                 case 'allocatedSize':
-                    return (a.blocks ?? 0) - (b.blocks ?? 0) || a.name.localeCompare(b.name);
+                    return rev * ((a.blocks ?? 0) - (b.blocks ?? 0) || a.name.localeCompare(b.name));
                 case 'hardLinks':
-                    return (b.nlink ?? 0) - (a.nlink ?? 0) || a.name.localeCompare(b.name);
-                case 'description':
+                    return rev * ((b.nlink ?? 0) - (a.nlink ?? 0) || a.name.localeCompare(b.name));
                 case 'streams':
+                    return rev * ((b.streamCount ?? 0) - (a.streamCount ?? 0) || a.name.localeCompare(b.name));
                 case 'streamSize':
-                    return a.name.localeCompare(b.name);
+                    return rev * ((b.streamTotalSize ?? 0) - (a.streamTotalSize ?? 0) || a.name.localeCompare(b.name));
+                case 'description': {
+                    const da = a.description ?? '';
+                    const db = b.description ?? '';
+                    return rev * (da.localeCompare(db) || a.name.localeCompare(b.name));
+                }
                 case 'unsorted':
                     return 0;
                 case 'name':
                 default:
-                    return a.name.localeCompare(b.name);
+                    return rev * a.name.localeCompare(b.name);
             }
         });
     }
@@ -296,7 +417,15 @@ export class Pane {
         const clockStyle = applyStyle(t.clock.idle);
 
         const pathMaxLen = Math.max(1, geo.width - 4 - clock.length);
-        const pathStr = ' ' + truncatePath(this.cwd, pathMaxLen) + ' ';
+        let displayPath: string;
+        if (this.isInArchive) {
+            const archiveName = path.basename(this.archiveHandle!.archivePath);
+            const archiveSubDir = this.archiveDir ? ':' + this.archiveDir : '';
+            displayPath = archiveName + archiveSubDir;
+        } else {
+            displayPath = truncatePath(this.cwd, pathMaxLen);
+        }
+        const pathStr = ' ' + displayPath.slice(0, pathMaxLen) + ' ';
 
         const fill = geo.width - 2 - pathStr.length - clock.length;
         const fillLeft = Math.max(0, Math.floor(fill / 2));
@@ -318,23 +447,25 @@ export class Pane {
     }
 
     private sortIndicator(): string {
+        let ch: string;
         switch (this.sortMode) {
-            case 'name': return 'n';
-            case 'extension': return 'x';
-            case 'date': return 'w';
-            case 'size': return 's';
-            case 'unsorted': return 'u';
-            case 'creationTime': return 'c';
-            case 'accessTime': return 'a';
-            case 'changeTime': return 'g';
-            case 'description': return 'd';
-            case 'owner': return 'o';
-            case 'allocatedSize': return 'a';
-            case 'hardLinks': return 'h';
-            case 'streams': return 'r';
-            case 'streamSize': return 'z';
+            case 'name': ch = 'n'; break;
+            case 'extension': ch = 'x'; break;
+            case 'date': ch = 'w'; break;
+            case 'size': ch = 's'; break;
+            case 'unsorted': ch = 'u'; break;
+            case 'creationTime': ch = 'c'; break;
+            case 'accessTime': ch = 'a'; break;
+            case 'changeTime': ch = 'g'; break;
+            case 'description': ch = 'd'; break;
+            case 'owner': ch = 'o'; break;
+            case 'allocatedSize': ch = 'l'; break;
+            case 'hardLinks': ch = 'h'; break;
+            case 'streams': ch = 'r'; break;
+            case 'streamSize': ch = 'z'; break;
             default: return ' ';
         }
+        return this.sortReversed ? ch.toUpperCase() : ch;
     }
 
     private renderColumnHeaders(ctx: PaneRenderContext): string {
@@ -457,8 +588,9 @@ export class Pane {
 
         const name = entry.name;
         const sizeStr = entry.isDir ? '<DIR>' : formatSizeComma(entry.size);
-        const dateStr = entry.name === '..' ? '' : formatDate(entry.mtime);
-        const right = sizeStr + '  ' + dateStr;
+        const showDesc = this.sortMode === 'description' && entry.description && entry.name !== '..';
+        const dateStr = showDesc ? '' : (entry.name === '..' ? '' : formatDate(entry.mtime));
+        const right = sizeStr + (dateStr ? '  ' + dateStr : '');
 
         if (entry.isSymlink) {
             const arrow = ' ' + SYMLINK_ARROW + ' ';
@@ -487,6 +619,23 @@ export class Pane {
                 + content
                 + beforeArrow + applyStyle(t.symlink.idle) + SYMLINK_ARROW + content + afterArrow
                 + gap + right
+                + border + moveTo(layout.infoRow, geo.startCol + geo.width - 1) + DBOX.vertical
+                + resetStyle();
+        }
+
+        if (showDesc) {
+            const desc = entry.description!;
+            const minGap = 2;
+            const availTotal = innerWidth - right.length;
+            const nameStr = name.length > Math.floor(availTotal / 3) ? name.slice(0, Math.max(1, Math.floor(availTotal / 3) - 1)) + '~' : name;
+            const availDesc = availTotal - nameStr.length - minGap * 2;
+            const descStr = availDesc > 0 ? (desc.length > availDesc ? desc.slice(0, availDesc - 1) + '~' : desc) : '';
+            const gap = ' '.repeat(Math.max(1, innerWidth - nameStr.length - descStr.length - right.length - (descStr.length > 0 ? minGap : 0)));
+            const descGap = descStr.length > 0 ? ' '.repeat(minGap) : '';
+
+            return border + moveTo(layout.infoRow, geo.startCol) + DBOX.vertical
+                + content
+                + nameStr + descGap + descStr + gap + right
                 + border + moveTo(layout.infoRow, geo.startCol + geo.width - 1) + DBOX.vertical
                 + resetStyle();
         }

@@ -161,6 +161,30 @@
         "when": "terminalFocus && vscommander.panelVisible"
       },
       {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[13;5u"
+        },
+        "key": "ctrl+enter",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[91;5u"
+        },
+        "key": "ctrl+[",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[93;5u"
+        },
+        "key": "ctrl+]",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
         "command": "vscommander.quickView",
         "key": "ctrl+q",
         "when": "vscommander.panelVisible"
@@ -242,6 +266,42 @@
             "type": "boolean",
             "default": true,
             "description": "Show dotfiles (hidden files) in the panel"
+          },
+          "vscommander.sortMode": {
+            "type": "string",
+            "default": "name",
+            "enum": [
+              "name",
+              "extension",
+              "size",
+              "date",
+              "unsorted",
+              "creationTime",
+              "accessTime",
+              "changeTime",
+              "description",
+              "owner",
+              "allocatedSize",
+              "hardLinks",
+              "streams",
+              "streamSize"
+            ],
+            "description": "Default sort mode for file panels"
+          },
+          "vscommander.sortReversed": {
+            "type": "boolean",
+            "default": false,
+            "description": "Reverse the default sort order"
+          },
+          "vscommander.sortDirsFirst": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show directories before files in file panels"
+          },
+          "vscommander.useSortGroups": {
+            "type": "boolean",
+            "default": false,
+            "description": "Use sort groups for file ordering"
           }
         }
       },
@@ -1388,7 +1448,14 @@
     "package": "npm run bundle && vsce package"
   },
   "dependencies": {
-    "node-pty": "^1.0.0"
+    "@types/adm-zip": "^0.5.7",
+    "@types/tar": "^6.1.13",
+    "7z-wasm": "^1.2.0",
+    "adm-zip": "^0.5.16",
+    "koffi": "^2.9.0",
+    "node-pty": "^1.0.0",
+    "node-unrar-js": "^2.0.2",
+    "tar": "^7.5.9"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -24,6 +24,7 @@ The extension runs as a terminal overlay, you can toggle the file panel on and o
 - **Half-panel mode**: `Ctrl+P` hides one pane to show color-rich terminal output alongside your files; commands run inline without hiding the panel
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
 - **Top menu bar**: F9 opens a Far Manager-style menu with Left, Files, Commands, Options, Right menus for sorting, column layout, and all panel operations
+- **Archive browsing**: Navigate into ZIP, TAR, 7Z, and RAR archives as if they were directories; view, extract, add, delete, and move files within archives (ZIP and 7Z support full write operations)
 - **Sorting**: Sort each pane independently by name, extension, size, date, or unsorted
 - **File operations**: F5 Copy, F6 Move/Rename with overwrite handling and progress display
 - **File selection**: Insert to toggle selection, batch operations on selected files
@@ -65,7 +66,7 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 |-----|--------|
 | `Ctrl+O` | Toggle file manager panel on/off |
 | `Tab` | Switch between left and right pane |
-| `Enter` | Open directory / open file in editor |
+| `Enter` | Open directory / open file in editor / enter archive |
 | `Up` / `Down` | Navigate file list |
 | `PgUp` / `PgDn` | Scroll by page |
 | `Home` / `End` | Jump to first / last entry |

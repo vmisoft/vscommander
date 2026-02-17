@@ -6,6 +6,9 @@ media_src/**
 
 node_modules/**
 !node_modules/node-pty/**
+!node_modules/koffi/**
+!node_modules/7z-wasm/**
+!node_modules/node-unrar-js/**
 
 out/**
 src/**

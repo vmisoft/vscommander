@@ -58,7 +58,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `Home` | Jump to first entry |
 | `End` | Jump to last entry |
 | `Tab` | Switch between left and right pane |
-| `Enter` | Open selected directory / open file in editor / execute command if text is entered |
+| `Enter` | Open selected directory / enter archive / open file in editor / execute command if text is entered |
 | `F3` | View -- highlight file in VS Code Explorer; open in system file manager if outside workspace |
 | `F4` | Open selected file in VS Code editor |
 | `F5` | Copy selected file(s) to the other pane |
@@ -81,6 +81,8 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `Alt+F2` | Open Change Drive popup for the right pane |
 | `Insert` | Toggle selection on current file and move cursor down |
 | `Alt+<letter>` | Open quick search popup and jump to first matching entry |
+| `Ctrl+F3`..`Ctrl+F11` | Direct sort mode shortcuts (Name, Extension, Date, Size, Unsorted, Creation, Access, Description, Owner) |
+| `Ctrl+F12` | Open Sort Modes popup |
 
 ## File Selection
 
@@ -226,16 +228,45 @@ These menus control the corresponding pane's display and sorting:
 | Brief | Ctrl+1 | 1-column file list |
 | Medium | Ctrl+2 | 2-column file list (default) |
 | Full | Ctrl+3 | 3-column file list |
-| Sort by name | | Sort entries alphabetically by name |
-| Sort by extension | | Sort entries by file extension, then name |
-| Sort by size | | Sort entries by file size |
-| Sort by date | | Sort entries by modification date (newest first) |
-| Unsorted | | Display entries in filesystem order |
+| Sort modes | Ctrl+F12 | Open the Sort Modes popup (see below) |
 | Show dotfiles | Ctrl+H | Toggle visibility of hidden files |
 | Re-read | Ctrl+R | Refresh the directory listing |
 | Change drive | Alt+F1/F2 | Open the Change Drive popup |
 
 Active options show a checkmark. Column count and sort mode are per-pane.
+
+### Sort Modes Popup
+
+Open from the Left/Right panel menu (**Sort modes**) or press `Ctrl+F12`. The popup lists all available sort modes with a checkmark next to the active one. Select a mode and press Enter to apply it to the active pane.
+
+| Sort Mode | Shortcut | Description |
+|-----------|----------|-------------|
+| Name | Ctrl+F3 | Sort alphabetically by name |
+| Extension | Ctrl+F4 | Sort by file extension, then name |
+| Write time | Ctrl+F5 | Sort by modification date (newest first) |
+| Size | Ctrl+F6 | Sort by file size |
+| Unsorted | Ctrl+F7 | Display entries in filesystem order |
+| Creation time | Ctrl+F8 | Sort by creation time (newest first) |
+| Access time | Ctrl+F9 | Sort by last access time (newest first) |
+| Change time | | Sort by status change time (newest first) |
+| Description | Ctrl+F10 | Sort by file descriptions (see below) |
+| Owner | Ctrl+F11 | Sort by owner UID |
+| Allocated size | | Sort by allocated disk blocks |
+| Hard links | | Sort by hard link count (most first) |
+| Streams count | | Sort by NTFS alternate data stream count (Windows only) |
+| Streams size | | Sort by NTFS alternate data stream total size (Windows only) |
+
+Below the sort modes, three toggles control sorting behavior:
+
+| Toggle | Shortcut | Description |
+|--------|----------|-------------|
+| Use sort groups | Shift+F11 | Group files by custom patterns with assigned priorities |
+| Show selected first | Shift+F12 | Move selected files to the top of the list |
+| Show directories first | | Group directories before files regardless of sort order |
+
+**Sort direction**: The active sort mode is marked with `▲` (ascending) or `▼` (descending). Selecting the already-active mode toggles the direction. The same applies to the `Ctrl+F3`..`Ctrl+F11` shortcuts. The column header shows a lowercase letter for ascending (e.g. `n`) or uppercase for descending (e.g. `N`).
+
+Navigation: `Up`/`Down` to move, `Enter` to select, `Escape` to cancel. Hotkey letters activate items directly.
 
 ### Files Menu
 
@@ -312,6 +343,80 @@ By default, dotfiles (hidden files starting with `.`) are shown. They appear in 
 
 - Press `Ctrl+H` while the panel is open to toggle dotfile visibility for the current session
 - Use the `vscommander.showDotfiles` setting to change the persistent default
+
+## File Descriptions (Sort by Description)
+
+When you sort by description (via F9 > Left/Right menu > Sort by description), VSCommander reads file descriptions from `descript.ion` files -- a classic format used by Far Manager, Norton Commander, and other file managers.
+
+**How descriptions are loaded:**
+
+1. **`descript.ion` file**: VSCommander looks for a `descript.ion` file in the current directory (case-insensitive search). Each line maps a filename to a description:
+   ```
+   readme.txt This is the project readme
+   "file with spaces.doc" Important document
+   ```
+   - Filenames with spaces must be enclosed in double quotes
+   - A leading numeric token (file size) after the filename is stripped per Far Manager convention
+   - Lookup is case-insensitive
+
+2. **README fallback**: For directories that have no `descript.ion` entry, VSCommander tries to read the first non-empty line from a README file inside that directory (`readme.txt`, `readme.md`, `README.txt`, `README.md`, or `README`, tried in that order).
+
+**Info bar**: When sorting by description, the info bar shows the filename followed by the description text (truncated to fit) instead of the modification date.
+
+Files without descriptions sort before files with descriptions (empty string sorts first), then alphabetically by name within the same description.
+
+## Archive Navigation
+
+VSCommander can browse archive files (ZIP, TAR, 7Z, RAR) as if they were directories, replicating the classic Far Manager archive plugin experience.
+
+### Opening an Archive
+
+Press `Enter` on an archive file to open it. The pane switches to archive browsing mode -- the top border shows the archive filename and current path within the archive (e.g. `archive.zip:src/lib`). Directory entries and files inside the archive are displayed exactly like a normal directory listing. Sorting and selection work as usual.
+
+### Navigation Inside Archives
+
+| Key | Action |
+|-----|--------|
+| `Enter` on a directory | Navigate into that directory within the archive |
+| `Enter` on `..` | Go up one level within the archive; at the archive root, exit the archive |
+| `Enter` on a file | Extract the file to a temp directory and open it in VS Code |
+| `Ctrl+PageUp` | Go up one level within the archive; at the root, exit the archive |
+| `Ctrl+PageDown` | Enter the selected directory within the archive |
+| `F3` on a file | Extract to temp and view the file |
+| `F4` on a file | Extract to temp and open the file in the editor |
+
+### Exiting an Archive
+
+Navigate up past the archive root (press `..` or `Ctrl+PageUp` when at the top level) to exit the archive and return to the filesystem directory containing the archive file. The cursor returns to the archive file.
+
+### Extracting Files (F5)
+
+Press `F5` while inside an archive to extract the selected files (or the file under the cursor) to the other pane's directory. The standard Copy dialog appears with the target path pre-filled. A progress bar shows extraction progress. Directories are extracted recursively with their full subtree.
+
+### Adding Files to Archives (F5)
+
+When the other pane is inside an archive and you press `F5`, the selected files from the filesystem are added to the archive at its current virtual directory. For read-only formats (TAR, RAR), an error message is shown.
+
+### Deleting from Archives (F8)
+
+Press `F8` while inside an archive to delete the selected entries. A confirmation dialog shows the entries to be deleted. Directories are deleted recursively with all their contents. For read-only formats (TAR, RAR), an error message is shown.
+
+### Make Directory in Archives (F7)
+
+Press `F7` while inside an archive to create a new empty directory entry. The standard Make Directory dialog appears (link options are ignored). For read-only formats (TAR, RAR), an error message is shown.
+
+### Moving Files (F6)
+
+Press `F6` while inside an archive to move (extract + delete) the selected entries to the other pane's directory. When the other pane is inside an archive and you press `F6`, the selected files are added to the archive and deleted from the filesystem. For read-only formats (TAR, RAR), an error message is shown.
+
+### Supported Formats
+
+| Format | Extensions | Write Support |
+|--------|-----------|---------------|
+| ZIP | `.zip`, `.jar`, `.war`, `.ear`, `.apk` | Full (add, delete, mkdir) |
+| TAR | `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz` | Read only |
+| 7-Zip | `.7z` | Add, delete, mkdir |
+| RAR | `.rar` | Read only |
 
 ## Command Line
 

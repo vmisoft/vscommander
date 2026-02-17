@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import * as os from 'os';
+import * as path from 'path';
 import { spawnShell, ShellProxy, WindowsBackend } from './shell';
 import { Panel } from './panel';
 import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings, resolveTheme, ThemeName, ColorOverride, applyColorOverrides, THEME_KEYS } from './settings';
@@ -14,9 +15,15 @@ import { makeDirectories, deleteRecursive } from './fileOps';
 import { ShellRouter } from './shellRouter';
 import { QuickViewController, QuickViewHost } from './quickView';
 import { CopyMoveController } from './copyMoveController';
+import { openArchive } from './archiveFs';
+import './archiveZip';
+import './archiveTar';
+import './archive7z';
+import './archiveRar';
 
 const ALL_VSCOMMANDER_KEYS = [
     'theme', 'showDotfiles', 'clock', 'panelColumns',
+    'sortMode', 'sortReversed', 'sortDirsFirst', 'useSortGroups',
     'keyView', 'keyEdit', 'keyCopy', 'keyMove', 'keyMkdir', 'keyDelete',
     'keyForceDelete', 'keyQuit', 'keyMenu', 'keyDriveLeft', 'keyDriveRight',
     'keyToggleDotfiles', 'keyTogglePane', 'keyDetach', 'keyResizeLeft',
@@ -60,6 +67,10 @@ function readSettings(): PanelSettings {
     return mergeSettings({
         showDotfiles: cfg.get<boolean>('showDotfiles', DEFAULT_SETTINGS.showDotfiles),
         clockEnabled: cfg.get<boolean>('clock', DEFAULT_SETTINGS.clockEnabled),
+        sortMode: cfg.get<string>('sortMode', DEFAULT_SETTINGS.sortMode),
+        sortReversed: cfg.get<boolean>('sortReversed', DEFAULT_SETTINGS.sortReversed),
+        sortDirsFirst: cfg.get<boolean>('sortDirsFirst', DEFAULT_SETTINGS.sortDirsFirst),
+        useSortGroups: cfg.get<boolean>('useSortGroups', DEFAULT_SETTINGS.useSortGroups),
         panelColumns: cfg.get<number>('panelColumns', DEFAULT_SETTINGS.panelColumns),
         workspaceDirs: (vscode.workspace.workspaceFolders || []).map(f => f.uri.fsPath),
         toggleKey,
@@ -410,6 +421,38 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 case 'toggleDetach':
                     this.toggleDetach();
                     break;
+                case 'enterArchive':
+                    this.enterArchive(result.filePath);
+                    break;
+                case 'openArchiveFile':
+                    this.openArchiveFile(result.archivePath, result.entryPath);
+                    break;
+                case 'viewArchiveFile':
+                    this.openArchiveFile(result.archivePath, result.entryPath);
+                    break;
+                case 'extractFromArchive':
+                    this.writeEmitter.fire(this.panel.redraw());
+                    this.extractFromArchive(result.targetPath, result.entryPaths, result.archiveDir);
+                    break;
+                case 'addToArchive':
+                    this.writeEmitter.fire(this.panel.redraw());
+                    this.addToArchive(result.sourcePaths, result.archiveDir);
+                    break;
+                case 'deleteFromArchive':
+                    this.writeEmitter.fire(this.panel.redraw());
+                    this.deleteFromArchive(result.entryPaths);
+                    break;
+                case 'mkdirInArchive':
+                    this.mkdirInArchive(result.dirPath);
+                    break;
+                case 'moveFromArchive':
+                    this.writeEmitter.fire(this.panel.redraw());
+                    this.moveFromArchive(result.targetPath, result.entryPaths, result.archiveDir);
+                    break;
+                case 'moveToArchive':
+                    this.writeEmitter.fire(this.panel.redraw());
+                    this.moveToArchive(result.sourcePaths, result.archiveDir);
+                    break;
                 case 'openFile':
                     if (this.quickView.active) {
                         this.panel.quickViewMode = false;
@@ -570,11 +613,13 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
     private syncPaneCwd(): void {
         if (!this.panel || !this.shell) return;
+        const pane = this.panel.activePaneObj;
+        if (pane.isVirtual) return;
         const shellCwd = this.shell.getCwd();
-        if (shellCwd && shellCwd !== this.panel.activePaneObj.cwd) {
-            this.panel.activePaneObj.cwd = shellCwd;
-            this.panel.activePaneObj.cursor = 0;
-            this.panel.activePaneObj.scroll = 0;
+        if (shellCwd && shellCwd !== pane.cwd) {
+            pane.cwd = shellCwd;
+            pane.cursor = 0;
+            pane.scroll = 0;
         }
     }
 
@@ -730,6 +775,246 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         }
     }
 
+    private async enterArchive(filePath: string): Promise<void> {
+        if (!this.panel) return;
+        const handle = await openArchive(filePath);
+        if (!handle) {
+            this.openFile(filePath);
+            return;
+        }
+        const pane = this.panel.activePaneObj;
+        pane.enterArchive(handle);
+        this.writeEmitter.fire(this.panel.redraw());
+    }
+
+    private async openArchiveFile(archivePath: string, entryPath: string): Promise<void> {
+        if (!this.panel) return;
+        const pane = this.panel.activePaneObj;
+        if (!pane.archiveHandle) return;
+        const archiveHash = path.basename(archivePath).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const tmpDir = path.join(os.tmpdir(), 'vscommander-archive', archiveHash);
+        const entryDir = entryPath.includes('/') ? entryPath.slice(0, entryPath.lastIndexOf('/')) : '';
+        const destDir = entryDir ? path.join(tmpDir, ...entryDir.split('/')) : tmpDir;
+        const destPath = path.join(destDir, path.basename(entryPath));
+        try {
+            await pane.archiveHandle.extractToFile(entryPath, destPath);
+            this.openFile(destPath);
+        } catch {
+            // extraction failed — ignore
+        }
+    }
+
+    private async extractFromArchive(targetPath: string, entryPaths: string[], archiveDir: string): Promise<void> {
+        if (!this.panel) return;
+        const pane = this.panel.activePaneObj;
+        if (!pane.archiveHandle) return;
+
+        const handle = pane.archiveHandle;
+        const allEntries = handle.entries;
+
+        const filesToExtract: { archivePath: string; relativePath: string }[] = [];
+        let totalBytes = 0;
+
+        for (const ep of entryPaths) {
+            const matchedEntry = allEntries.find(e => {
+                const normalized = e.path.endsWith('/') ? e.path.slice(0, -1) : e.path;
+                return normalized === ep;
+            });
+
+            if (matchedEntry && !matchedEntry.isDir) {
+                const baseName = ep.lastIndexOf('/') >= 0 ? ep.slice(ep.lastIndexOf('/') + 1) : ep;
+                filesToExtract.push({ archivePath: ep, relativePath: baseName });
+                totalBytes += matchedEntry.size;
+            } else {
+                const prefix = ep + '/';
+                for (const e of allEntries) {
+                    const normalized = e.path.endsWith('/') ? e.path.slice(0, -1) : e.path;
+                    if (normalized === ep && e.isDir) continue;
+                    if (normalized.startsWith(prefix) && !e.isDir) {
+                        const baseName = ep.lastIndexOf('/') >= 0 ? ep.slice(ep.lastIndexOf('/') + 1) : ep;
+                        const relativePath = baseName + '/' + normalized.slice(prefix.length);
+                        filesToExtract.push({ archivePath: normalized, relativePath });
+                        totalBytes += e.size;
+                    }
+                }
+            }
+        }
+
+        if (filesToExtract.length === 0) {
+            this.refreshPanels();
+            return;
+        }
+
+        const resolvedTarget = path.isAbsolute(targetPath)
+            ? targetPath
+            : path.resolve(pane.cwd, targetPath);
+
+        this.panel.copyProgressPopup.openWith('copy', filesToExtract.length, totalBytes);
+        this.writeEmitter.fire(this.panel.redraw());
+
+        let filesDone = 0;
+        let bytesDone = 0;
+        let lastRedraw = 0;
+        let cancelled = false;
+
+        for (const file of filesToExtract) {
+            if (cancelled || this.panel.copyProgressPopup.cancelled) break;
+
+            const destPath = path.join(resolvedTarget, file.relativePath);
+
+            const srcDisplay = path.basename(handle.archivePath) + ':' + file.archivePath;
+            const totalPct = totalBytes > 0 ? Math.min(100, Math.floor(bytesDone * 100 / totalBytes)) : 0;
+            this.panel.copyProgressPopup.updateProgress(
+                srcDisplay, destPath, filesDone, filesToExtract.length,
+                bytesDone, totalBytes, 0, totalPct,
+            );
+
+            const now = Date.now();
+            if (now - lastRedraw >= 50) {
+                lastRedraw = now;
+                this.writeEmitter.fire(this.panel.redraw());
+                await new Promise<void>(r => setTimeout(r, 0));
+            }
+
+            try {
+                await handle.extractToFile(file.archivePath, destPath);
+            } catch {
+                // skip failed extractions
+            }
+
+            const entry = allEntries.find(e => {
+                const normalized = e.path.endsWith('/') ? e.path.slice(0, -1) : e.path;
+                return normalized === file.archivePath;
+            });
+            bytesDone += entry ? entry.size : 0;
+            filesDone++;
+        }
+
+        this.panel.copyProgressPopup.close();
+        pane.clearSelection();
+        this.refreshPanels();
+    }
+
+    private async addToArchive(sourcePaths: string[], archiveDir: string): Promise<void> {
+        if (!this.panel) return;
+        const otherPane = this.panel.activePane === 'left' ? this.panel.right : this.panel.left;
+        if (!otherPane.archiveHandle || !otherPane.archiveHandle.addEntries) return;
+
+        const handle = otherPane.archiveHandle;
+        try {
+            await handle.addEntries!(sourcePaths, archiveDir);
+        } catch {
+            // add failed
+        }
+
+        const reopened = await openArchive(handle.archivePath);
+        if (reopened) {
+            otherPane.archiveHandle = reopened;
+            otherPane.refreshArchiveView();
+        }
+        this.panel.activePaneObj.clearSelection();
+        this.refreshPanels();
+    }
+
+    private async deleteFromArchive(entryPaths: string[]): Promise<void> {
+        if (!this.panel) return;
+        const pane = this.panel.activePaneObj;
+        if (!pane.archiveHandle || !pane.archiveHandle.deleteEntries) return;
+
+        const handle = pane.archiveHandle;
+        try {
+            await handle.deleteEntries!(entryPaths);
+        } catch {
+            // delete failed
+        }
+
+        const reopened = await openArchive(handle.archivePath);
+        if (reopened) {
+            pane.archiveHandle = reopened;
+            pane.refreshArchiveView();
+        }
+        pane.clearSelection();
+        this.refreshPanels();
+    }
+
+    private async mkdirInArchive(dirPath: string): Promise<void> {
+        if (!this.panel) return;
+        const pane = this.panel.activePaneObj;
+        if (!pane.archiveHandle || !pane.archiveHandle.mkdirEntry) return;
+
+        const handle = pane.archiveHandle;
+        try {
+            await handle.mkdirEntry!(dirPath);
+        } catch {
+            // mkdir failed
+        }
+
+        const reopened = await openArchive(handle.archivePath);
+        if (reopened) {
+            pane.archiveHandle = reopened;
+            pane.refreshArchiveView();
+        }
+        const dirName = dirPath.includes('/') ? dirPath.slice(dirPath.lastIndexOf('/') + 1) : dirPath;
+        const idx = pane.entries.findIndex(e => e.name === dirName);
+        if (idx >= 0) pane.cursor = idx;
+        this.refreshPanels();
+    }
+
+    private async moveFromArchive(targetPath: string, entryPaths: string[], archiveDir: string): Promise<void> {
+        if (!this.panel) return;
+        const pane = this.panel.activePaneObj;
+        if (!pane.archiveHandle || !pane.archiveHandle.deleteEntries) return;
+
+        await this.extractFromArchive(targetPath, entryPaths, archiveDir);
+
+        const handle = pane.archiveHandle;
+        if (!handle) return;
+        try {
+            await handle.deleteEntries!(entryPaths);
+        } catch {
+            // delete failed after extract
+        }
+
+        const reopened = await openArchive(handle.archivePath);
+        if (reopened) {
+            pane.archiveHandle = reopened;
+            pane.refreshArchiveView();
+        }
+        this.refreshPanels();
+    }
+
+    private async moveToArchive(sourcePaths: string[], archiveDir: string): Promise<void> {
+        if (!this.panel) return;
+        const otherPane = this.panel.activePane === 'left' ? this.panel.right : this.panel.left;
+        if (!otherPane.archiveHandle || !otherPane.archiveHandle.addEntries) return;
+
+        const handle = otherPane.archiveHandle;
+        try {
+            await handle.addEntries!(sourcePaths, archiveDir);
+        } catch {
+            // add failed — don't delete sources
+            this.refreshPanels();
+            return;
+        }
+
+        const fs = await import('fs');
+        for (const src of sourcePaths) {
+            try {
+                fs.rmSync(src, { recursive: true, force: true });
+            } catch {
+                // skip failed deletions
+            }
+        }
+
+        const reopened = await openArchive(handle.archivePath);
+        if (reopened) {
+            otherPane.archiveHandle = reopened;
+            otherPane.refreshArchiveView();
+        }
+        this.panel.activePaneObj.clearSelection();
+        this.refreshPanels();
+    }
+
     private async deleteFile(filePath: string, toTrash: boolean): Promise<void> {
         if (!this.panel) return;
 
@@ -798,6 +1083,11 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         await cfg.update('showDotfiles', s.showDotfiles, target);
         await cfg.update('clock', s.clockEnabled, target);
         await cfg.update('panelColumns', s.panelColumns, target);
+        const activePane = this.panel.activePaneObj;
+        await cfg.update('sortMode', activePane.sortMode, target);
+        await cfg.update('sortReversed', activePane.sortReversed, target);
+        await cfg.update('sortDirsFirst', activePane.sortDirsFirst, target);
+        await cfg.update('useSortGroups', s.useSortGroups, target);
         await cfg.update('keyView', s.keys.view, target);
         await cfg.update('keyEdit', s.keys.edit, target);
         await cfg.update('keyCopy', s.keys.copy, target);

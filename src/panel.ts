@@ -6,7 +6,7 @@ import {
 } from './draw';
 import { MouseEvent, parseMouseEvent } from './mouse';
 import { PanelSettings, TextStyle, matchesKeyBinding, resolveTheme } from './settings';
-import { Layout, PaneGeometry } from './types';
+import { Layout, PaneGeometry, SortMode } from './types';
 import { computeLayout } from './helpers';
 import { Pane } from './pane';
 import { Popup, PopupInputResult } from './popup';
@@ -20,12 +20,14 @@ import { CopyProgressPopup, ScanProgressPopup, DeleteProgressPopup } from './cop
 import { OverwritePopup } from './overwritePopup';
 import { ColorEditorPopup } from './colorEditorPopup';
 import { ThemePopup } from './themePopup';
+import { SortPopup, SortPopupResult } from './sortPopup';
 import { ColorOverride, ThemeName, applyColorOverrides, themeToOverrides, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS } from './settings';
 import { TerminalBuffer } from './terminalBuffer';
 import { getCellAt } from './cellQuery';
 import { TerminalArea } from './terminalArea';
 import { FKeyBar } from './fkeyBar';
 import { CommandLine } from './commandLine';
+import { isArchiveFile } from './archiveFs';
 
 export type PanelInputResult =
     | { action: 'quit' }
@@ -46,6 +48,15 @@ export type PanelInputResult =
     | { action: 'changeTheme'; themeName: ThemeName }
     | { action: 'saveSettings'; scope: 'user' | 'workspace' }
     | { action: 'deleteSettings'; scope: 'user' | 'workspace' }
+    | { action: 'enterArchive'; filePath: string }
+    | { action: 'openArchiveFile'; archivePath: string; entryPath: string }
+    | { action: 'viewArchiveFile'; archivePath: string; entryPath: string }
+    | { action: 'extractFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string }
+    | { action: 'addToArchive'; sourcePaths: string[]; archiveDir: string }
+    | { action: 'deleteFromArchive'; entryPaths: string[] }
+    | { action: 'mkdirInArchive'; dirPath: string }
+    | { action: 'moveFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string }
+    | { action: 'moveToArchive'; sourcePaths: string[]; archiveDir: string }
     | { action: 'none' };
 
 export class Panel {
@@ -68,6 +79,7 @@ export class Panel {
     overwritePopup: OverwritePopup;
     colorEditorPopup: ColorEditorPopup;
     themePopup: ThemePopup;
+    sortPopup: SortPopup;
     termBuffer: TerminalBuffer;
     private terminalArea = new TerminalArea();
     private fkeyBar = new FKeyBar();
@@ -106,6 +118,7 @@ export class Panel {
         this.overwritePopup = new OverwritePopup();
         this.colorEditorPopup = new ColorEditorPopup();
         this.themePopup = new ThemePopup();
+        this.sortPopup = new SortPopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
         this.syncPopupBounds();
     }
@@ -141,7 +154,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -176,7 +189,8 @@ export class Panel {
             || this.menuPopup.active || this.copyMovePopup.active
             || this.copyProgressPopup.active || this.scanProgressPopup.active
             || this.deleteProgressPopup.active || this.overwritePopup.active
-            || this.colorEditorPopup.active || this.themePopup.active;
+            || this.colorEditorPopup.active || this.themePopup.active
+            || this.sortPopup.active;
     }
 
     private get activePopupObj(): Popup | null {
@@ -187,6 +201,7 @@ export class Panel {
         if (this.deleteProgressPopup.active) return this.deleteProgressPopup;
         if (this.themePopup.active) return this.themePopup;
         if (this.colorEditorPopup.active) return this.colorEditorPopup;
+        if (this.sortPopup.active) return this.sortPopup;
         if (this.copyMovePopup.active) return this.copyMovePopup;
         if (this.mkdirPopup.active) return this.mkdirPopup;
         if (this.drivePopup.active) return this.drivePopup;
@@ -371,6 +386,10 @@ export class Panel {
             return this.resolveColorEditorResult(this.colorEditorPopup.handleInput(data));
         }
 
+        if (this.sortPopup.active) {
+            return this.resolveSortResult(this.sortPopup.handleInput(data));
+        }
+
         if (this.menuPopup.active) {
             return this.resolveMenuResult(this.menuPopup.handleInput(data));
         }
@@ -452,6 +471,13 @@ export class Panel {
 
         if (matchesKeyBinding(data, this.settings.keys.view)) {
             const entry = pane.entries[pane.cursor];
+            if (pane.isInArchive && entry && entry.name !== '..' && !entry.isDir) {
+                return {
+                    action: 'viewArchiveFile',
+                    archivePath: pane.archiveHandle!.archivePath,
+                    entryPath: pane.getArchiveEntryPath(entry.name),
+                };
+            }
             if (entry && entry.name !== '..') {
                 return { action: 'viewFile', filePath: path.join(pane.cwd, entry.name) };
             }
@@ -460,6 +486,13 @@ export class Panel {
 
         if (matchesKeyBinding(data, this.settings.keys.edit)) {
             const entry = pane.entries[pane.cursor];
+            if (pane.isInArchive && entry && !entry.isDir) {
+                return {
+                    action: 'openArchiveFile',
+                    archivePath: pane.archiveHandle!.archivePath,
+                    entryPath: pane.getArchiveEntryPath(entry.name),
+                };
+            }
             if (entry && !entry.isDir) {
                 return { action: 'openFile', filePath: path.join(pane.cwd, entry.name) };
             }
@@ -467,25 +500,48 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, this.settings.keys.copy)) {
+            if (pane.isInArchive) {
+                return this.openArchiveExtractPopup();
+            }
+            const otherPane = this.activePane === 'left' ? this.right : this.left;
+            if (otherPane.isInArchive) {
+                return this.openAddToArchivePopup();
+            }
             return this.openCopyMovePopup('copy');
         }
 
         if (matchesKeyBinding(data, this.settings.keys.move)) {
+            if (pane.isInArchive) {
+                return this.openArchiveMoveFromPopup();
+            }
+            const otherPane = this.activePane === 'left' ? this.right : this.left;
+            if (otherPane.isInArchive) {
+                return this.openArchiveMoveToPopup();
+            }
             return this.openCopyMovePopup('move');
         }
 
         if (matchesKeyBinding(data, this.settings.keys.mkdir)) {
+            if (pane.isInArchive) {
+                return this.openArchiveMkdirPopup();
+            }
             this.openMkdirPopup('');
             return { action: 'redraw', data: this.render() };
         }
 
         if (matchesKeyBinding(data, this.settings.keys.delete)) {
+            if (pane.isInArchive) {
+                return this.openArchiveDeletePopup();
+            }
             const platform = os.platform();
             const hasTrash = platform === 'win32' || platform === 'darwin';
             return this.openDeletePopup(pane, hasTrash);
         }
 
         if (matchesKeyBinding(data, this.settings.keys.forceDelete)) {
+            if (pane.isInArchive) {
+                return this.openArchiveDeletePopup();
+            }
             return this.openDeletePopup(pane, false);
         }
 
@@ -567,17 +623,33 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
+        const ctrlFSortMap: [string, SortMode][] = [
+            ['Ctrl+F3', 'name'], ['Ctrl+F4', 'extension'], ['Ctrl+F5', 'date'],
+            ['Ctrl+F6', 'size'], ['Ctrl+F7', 'unsorted'], ['Ctrl+F8', 'creationTime'],
+            ['Ctrl+F9', 'accessTime'], ['Ctrl+F10', 'description'], ['Ctrl+F11', 'owner'],
+        ];
+        for (const [key, mode] of ctrlFSortMap) {
+            if (matchesKeyBinding(data, key)) {
+                if (pane.sortMode === mode) {
+                    pane.sortReversed = !pane.sortReversed;
+                } else {
+                    pane.sortMode = mode;
+                    pane.sortReversed = false;
+                }
+                pane.refresh(this.settings);
+                return { action: 'redraw', data: this.render() };
+            }
+        }
+
         if (matchesKeyBinding(data, 'Ctrl+F12')) {
-            const hasOverrides = Object.keys(this.settings.colorOverrides).length > 0;
-            this.menuPopup.openMenu(
-                this.settings, this.activePane,
-                this.left.sortMode, this.right.sortMode,
-                this.left.colCount, this.right.colCount,
-                hasOverrides,
-            );
-            this.menuPopup.selectedMenu = this.activePane === 'left' ? 0 : 4;
-            this.menuPopup.dropdownOpen = true;
-            this.menuPopup.selectedItem = 4;
+            this.openSortPopup(this.activePane);
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, 'Shift+F11')) {
+            this.settings.useSortGroups = !this.settings.useSortGroups;
+            this.left.refresh(this.settings);
+            this.right.refresh(this.settings);
             return { action: 'redraw', data: this.render() };
         }
 
@@ -587,12 +659,31 @@ export class Panel {
         }
 
         if (matchesKeyBinding(data, 'Ctrl+PageUp')) {
+            if (pane.isInArchive) {
+                if (!pane.navigateArchiveUp(this.settings, pageCapacity)) {
+                    pane.exitArchive(this.settings);
+                }
+                return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
+            }
             pane.navigateUp(this.settings, pageCapacity);
             return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
         }
 
         if (matchesKeyBinding(data, 'Ctrl+PageDown')) {
             const entry = pane.entries[pane.cursor];
+            if (pane.isInArchive) {
+                if (entry && entry.isDir) {
+                    if (entry.name === '..') {
+                        if (!pane.navigateArchiveUp(this.settings, pageCapacity)) {
+                            pane.exitArchive(this.settings);
+                        }
+                    } else {
+                        pane.navigateArchiveDir(entry.name);
+                    }
+                    return { action: 'redraw', data: clearScreen() + this.render() };
+                }
+                return { action: 'none' };
+            }
             if (entry && entry.isDir) {
                 if (entry.name === '..') {
                     pane.navigateUp(this.settings, pageCapacity);
@@ -600,6 +691,9 @@ export class Panel {
                     pane.navigateInto(entry, this.settings);
                 }
                 return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
+            }
+            if (entry && !entry.isDir && isArchiveFile(entry.name)) {
+                return { action: 'enterArchive', filePath: path.join(pane.cwd, entry.name) };
             }
             return { action: 'none' };
         }
@@ -912,6 +1006,28 @@ export class Panel {
                 return { action: 'executeCommand', data: '\r' };
             }
             const entry = pane.entries[pane.cursor];
+
+            if (pane.isInArchive) {
+                if (entry && entry.isDir) {
+                    if (entry.name === '..') {
+                        if (!pane.navigateArchiveUp(this.settings, pageCapacity)) {
+                            pane.exitArchive(this.settings);
+                        }
+                    } else {
+                        pane.navigateArchiveDir(entry.name);
+                    }
+                    return { action: 'redraw', data: clearScreen() + this.render() };
+                }
+                if (entry && !entry.isDir) {
+                    return {
+                        action: 'openArchiveFile',
+                        archivePath: pane.archiveHandle!.archivePath,
+                        entryPath: pane.getArchiveEntryPath(entry.name),
+                    };
+                }
+                return { action: 'none' };
+            }
+
             if (entry && entry.isDir) {
                 if (entry.name === '..') {
                     pane.navigateUp(this.settings, pageCapacity);
@@ -919,6 +1035,9 @@ export class Panel {
                     pane.navigateInto(entry, this.settings);
                 }
                 return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
+            }
+            if (entry && !entry.isDir && isArchiveFile(entry.name)) {
+                return { action: 'enterArchive', filePath: path.join(pane.cwd, entry.name) };
             }
             if (entry && !entry.isDir) {
                 return { action: 'openFile', filePath: path.join(pane.cwd, entry.name) };
@@ -1024,6 +1143,28 @@ export class Panel {
         return { action: 'redraw', data: this.render() };
     }
 
+    private resolveSortResult(result: PopupInputResult): PanelInputResult {
+        if (result.action === 'close' && result.confirm && result.command) {
+            const cmd = result.command as SortPopupResult;
+            const pane = this.sortPopup.targetPane === 'left' ? this.left : this.right;
+            if (cmd.type === 'sort' && cmd.mode) {
+                pane.sortMode = cmd.mode;
+                pane.sortReversed = cmd.reversed ?? false;
+                pane.refresh(this.settings);
+            } else if (cmd.type === 'toggleDirsFirst') {
+                pane.sortDirsFirst = !pane.sortDirsFirst;
+                pane.refresh(this.settings);
+            } else if (cmd.type === 'toggleSortGroups') {
+                this.settings.useSortGroups = !this.settings.useSortGroups;
+                this.left.refresh(this.settings);
+                this.right.refresh(this.settings);
+            } else if (cmd.type === 'toggleSelectedFirst') {
+                pane.moveSelectedToTop(this.settings);
+            }
+        }
+        return { action: 'redraw', data: this.render() };
+    }
+
     private resolveMenuResult(result: PopupInputResult): PanelInputResult {
         if (result.action === 'close' && result.confirm && result.command) {
             return this.handleMenuCommand(result.command as MenuCommand);
@@ -1096,6 +1237,10 @@ export class Panel {
                 pane.refresh(this.settings);
                 return { action: 'redraw', data: this.render() };
             }
+            case 'openSortMenu': {
+                this.openSortPopup(cmd.pane);
+                return { action: 'redraw', data: this.render() };
+            }
             case 'reread': {
                 const pane = cmd.pane === 'left' ? this.left : this.right;
                 pane.refresh(this.settings);
@@ -1128,31 +1273,45 @@ export class Panel {
                 return { action: 'redraw', data: this.render() };
             }
             case 'copy': {
+                if (this.activePaneObj.isInArchive) {
+                    return this.openArchiveExtractPopup();
+                }
+                const otherCopy = this.activePane === 'left' ? this.right : this.left;
+                if (otherCopy.isInArchive) {
+                    return this.openAddToArchivePopup();
+                }
                 return this.openCopyMovePopup('copy');
             }
             case 'move': {
+                if (this.activePaneObj.isInArchive) {
+                    return this.openArchiveMoveFromPopup();
+                }
+                const otherMove = this.activePane === 'left' ? this.right : this.left;
+                if (otherMove.isInArchive) {
+                    return this.openArchiveMoveToPopup();
+                }
                 return this.openCopyMovePopup('move');
             }
             case 'mkdir': {
+                if (this.activePaneObj.isInArchive) {
+                    return this.openArchiveMkdirPopup();
+                }
                 this.openMkdirPopup('');
                 return { action: 'redraw', data: this.render() };
             }
             case 'delete': {
+                if (this.activePaneObj.isInArchive) {
+                    return this.openArchiveDeletePopup();
+                }
                 const pane = this.activePaneObj;
                 const platform = os.platform();
                 const hasTrash = platform === 'win32' || platform === 'darwin';
                 return this.openDeletePopup(pane, hasTrash);
             }
             case 'swapPanels': {
-                const tmpCwd = this.left.cwd;
-                this.left.cwd = this.right.cwd;
-                this.right.cwd = tmpCwd;
-                const tmpSort = this.left.sortMode;
-                this.left.sortMode = this.right.sortMode;
-                this.right.sortMode = tmpSort;
-                const tmpCols = this.left.colCount;
-                this.left.colCount = this.right.colCount;
-                this.right.colCount = tmpCols;
+                const tmp = this.left.getState();
+                this.left.setState(this.right.getState());
+                this.right.setState(tmp);
                 this.left.refresh(this.settings);
                 this.right.refresh(this.settings);
                 return { action: 'redraw', data: this.render() };
@@ -1279,6 +1438,12 @@ export class Panel {
         return { action: 'redraw', data: this.render() };
     }
 
+    private openSortPopup(pane: 'left' | 'right'): void {
+        const targetPane = pane === 'left' ? this.left : this.right;
+        this.sortPopup.openSort(pane, targetPane.sortMode, targetPane.sortReversed,
+            this.settings.useSortGroups, targetPane.selectedToTop, targetPane.sortDirsFirst);
+    }
+
     private openDrivePopup(target: 'left' | 'right'): void {
         const otherPane = target === 'left' ? this.right : this.left;
         this.drivePopup.open(target, this.settings, otherPane.cwd);
@@ -1298,9 +1463,11 @@ export class Panel {
                         targetPath = otherCwd;
                     }
                 }
+                pane.isVirtual = false;
                 pane.cwd = targetPath;
                 pane.entries = Pane.readDir(targetPath, this.settings);
             } else {
+                pane.isVirtual = true;
                 pane.cwd = selected.label;
                 pane.entries = [];
             }
@@ -1327,6 +1494,265 @@ export class Panel {
                 multipleNames: r.multipleNames,
             };
         });
+    }
+
+    private openArchiveDeletePopup(): PanelInputResult {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        if (!entry || entry.name === '..') return { action: 'none' };
+        if (!pane.archiveHandle) return { action: 'none' };
+
+        if (!pane.archiveHandle.deleteEntries) {
+            this.confirmPopup.openWith({
+                title: 'Error',
+                bodyLines: [
+                    pane.archiveHandle.format + ' archives are read-only.',
+                    'Cannot delete from this archive format.',
+                ],
+                buttons: ['OK'],
+                warning: true,
+                onConfirm: () => undefined,
+            });
+            return { action: 'redraw', data: this.render() };
+        }
+
+        const names: string[] = [];
+        if (pane.selected.size > 0) {
+            for (const e of pane.entries) {
+                if (pane.selected.has(e.name)) names.push(e.name);
+            }
+        } else {
+            names.push(entry.name);
+        }
+
+        const archiveDir = pane.archiveDir;
+        const entryPaths = names.map(n => archiveDir ? archiveDir + '/' + n : n);
+        const kind = names.length === 1 ? (entry.isDir ? 'directory' : 'file') : names.length + ' items';
+        const bodyLines = names.length === 1
+            ? ['Do you wish to delete the ' + kind + ' from the archive?', names[0]]
+            : ['Do you wish to delete ' + kind + ' from the archive?', ...names.slice(0, 5), ...(names.length > 5 ? ['...'] : [])];
+
+        this.confirmPopup.openWith({
+            title: 'Delete',
+            bodyLines,
+            buttons: ['Delete', 'Cancel'],
+            warning: false,
+            onConfirm: (btnIdx) => {
+                if (btnIdx === 0) {
+                    return { action: 'deleteFromArchive', entryPaths };
+                }
+            },
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openArchiveMkdirPopup(): PanelInputResult {
+        const pane = this.activePaneObj;
+        if (!pane.archiveHandle) return { action: 'none' };
+
+        if (!pane.archiveHandle.mkdirEntry) {
+            this.confirmPopup.openWith({
+                title: 'Error',
+                bodyLines: [
+                    pane.archiveHandle.format + ' archives are read-only.',
+                    'Cannot create directories in this archive format.',
+                ],
+                buttons: ['OK'],
+                warning: true,
+                onConfirm: () => undefined,
+            });
+            return { action: 'redraw', data: this.render() };
+        }
+
+        const archiveDir = pane.archiveDir;
+        this.mkdirPopup.openWith('', this.cols);
+        this.mkdirPopup.setConfirmAction(() => {
+            const r = this.mkdirPopup.result;
+            const dirPath = archiveDir ? archiveDir + '/' + r.dirName : r.dirName;
+            return { action: 'mkdirInArchive', dirPath };
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openArchiveMoveFromPopup(): PanelInputResult {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        if (!entry || (entry.name === '..' && pane.selected.size === 0)) {
+            return { action: 'none' };
+        }
+        if (!pane.archiveHandle) return { action: 'none' };
+
+        if (!pane.archiveHandle.deleteEntries) {
+            this.confirmPopup.openWith({
+                title: 'Error',
+                bodyLines: [
+                    pane.archiveHandle.format + ' archives are read-only.',
+                    'Cannot move from this archive format.',
+                ],
+                buttons: ['OK'],
+                warning: true,
+                onConfirm: () => undefined,
+            });
+            return { action: 'redraw', data: this.render() };
+        }
+
+        const sourceNames: string[] = [];
+        if (pane.selected.size > 0) {
+            for (const e of pane.entries) {
+                if (pane.selected.has(e.name)) sourceNames.push(e.name);
+            }
+        } else {
+            sourceNames.push(entry.name);
+        }
+
+        const otherPane = this.activePane === 'left' ? this.right : this.left;
+        const targetDir = otherPane.cwd;
+        const archiveDir = pane.archiveDir;
+
+        this.copyMovePopup.openWith('move', targetDir, sourceNames, path.basename(pane.archiveHandle.archivePath), this.cols);
+        this.copyMovePopup.setConfirmAction(() => {
+            const r = this.copyMovePopup.result;
+            const entryPaths = sourceNames.map(n => archiveDir ? archiveDir + '/' + n : n);
+            return {
+                action: 'moveFromArchive',
+                targetPath: r.targetPath,
+                entryPaths,
+                archiveDir,
+            };
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openArchiveMoveToPopup(): PanelInputResult {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        if (!entry || (entry.name === '..' && pane.selected.size === 0)) {
+            return { action: 'none' };
+        }
+
+        const otherPane = this.activePane === 'left' ? this.right : this.left;
+        if (!otherPane.archiveHandle) return { action: 'none' };
+
+        if (!otherPane.archiveHandle.addEntries) {
+            this.confirmPopup.openWith({
+                title: 'Error',
+                bodyLines: [
+                    otherPane.archiveHandle.format + ' archives are read-only.',
+                    'Cannot move files into this archive format.',
+                ],
+                buttons: ['OK'],
+                warning: true,
+                onConfirm: () => undefined,
+            });
+            return { action: 'redraw', data: this.render() };
+        }
+
+        const sourceNames: string[] = [];
+        if (pane.selected.size > 0) {
+            for (const e of pane.entries) {
+                if (pane.selected.has(e.name)) sourceNames.push(e.name);
+            }
+        } else {
+            sourceNames.push(entry.name);
+        }
+
+        const archiveName = path.basename(otherPane.archiveHandle.archivePath);
+        const archiveDir = otherPane.archiveDir;
+        const targetLabel = archiveName + ':' + (archiveDir ? archiveDir + '/' : '');
+
+        this.copyMovePopup.openWith('move', targetLabel, sourceNames, pane.cwd, this.cols);
+        this.copyMovePopup.setConfirmAction(() => {
+            const sourcePaths = sourceNames.map(n => path.join(pane.cwd, n));
+            return {
+                action: 'moveToArchive',
+                sourcePaths,
+                archiveDir,
+            };
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openArchiveExtractPopup(): PanelInputResult {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        if (!entry || (entry.name === '..' && pane.selected.size === 0)) {
+            return { action: 'none' };
+        }
+
+        const sourceNames: string[] = [];
+        if (pane.selected.size > 0) {
+            for (const e of pane.entries) {
+                if (pane.selected.has(e.name)) sourceNames.push(e.name);
+            }
+        } else {
+            sourceNames.push(entry.name);
+        }
+
+        const otherPane = this.activePane === 'left' ? this.right : this.left;
+        const targetDir = otherPane.cwd;
+        const archiveDir = pane.archiveDir;
+
+        this.copyMovePopup.openWith('copy', targetDir, sourceNames, path.basename(pane.archiveHandle!.archivePath), this.cols);
+        this.copyMovePopup.setConfirmAction(() => {
+            const r = this.copyMovePopup.result;
+            const entryPaths = sourceNames.map(n => archiveDir ? archiveDir + '/' + n : n);
+            return {
+                action: 'extractFromArchive',
+                targetPath: r.targetPath,
+                entryPaths,
+                archiveDir,
+            };
+        });
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private openAddToArchivePopup(): PanelInputResult {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        if (!entry || (entry.name === '..' && pane.selected.size === 0)) {
+            return { action: 'none' };
+        }
+
+        const otherPane = this.activePane === 'left' ? this.right : this.left;
+        if (!otherPane.archiveHandle) return { action: 'none' };
+
+        if (!otherPane.archiveHandle.addEntries) {
+            this.confirmPopup.openWith({
+                title: 'Error',
+                bodyLines: [
+                    otherPane.archiveHandle.format + ' archives are read-only.',
+                    'Cannot add files to this archive format.',
+                ],
+                buttons: ['OK'],
+                warning: true,
+                onConfirm: () => undefined,
+            });
+            return { action: 'redraw', data: this.render() };
+        }
+
+        const sourceNames: string[] = [];
+        if (pane.selected.size > 0) {
+            for (const e of pane.entries) {
+                if (pane.selected.has(e.name)) sourceNames.push(e.name);
+            }
+        } else {
+            sourceNames.push(entry.name);
+        }
+
+        const archiveName = path.basename(otherPane.archiveHandle.archivePath);
+        const archiveDir = otherPane.archiveDir;
+        const targetLabel = archiveName + ':' + (archiveDir ? archiveDir + '/' : '');
+
+        this.copyMovePopup.openWith('copy', targetLabel, sourceNames, pane.cwd, this.cols);
+        this.copyMovePopup.setConfirmAction(() => {
+            const sourcePaths = sourceNames.map(n => path.join(pane.cwd, n));
+            return {
+                action: 'addToArchive',
+                sourcePaths,
+                archiveDir,
+            };
+        });
+        return { action: 'redraw', data: this.render() };
     }
 
     private openCopyMovePopup(mode: CopyMoveMode): PanelInputResult {
@@ -1536,6 +1962,10 @@ export class Panel {
         } else if (this.colorEditorPopup.active) {
             out.push(this.colorEditorPopup.render(this.rows, this.cols, t));
             out.push(this.colorEditorPopup.renderShadow(cellAt));
+        } else if (this.sortPopup.active) {
+            const sortGeo = this.sortPopup.targetPane === 'left' ? layout.leftPane : layout.rightPane;
+            out.push(this.sortPopup.render(sortGeo.startCol, sortGeo.width, t, layout.listStart, layout.listHeight));
+            out.push(this.sortPopup.renderShadow(cellAt));
         } else if (this.menuPopup.active) {
             out.push(this.menuPopup.render(layout.topRow, 1, t, this.cols));
         } else if (this.searchPopup.active) {
@@ -1552,7 +1982,7 @@ export class Panel {
             out.push(this.mkdirPopup.renderShadow(cellAt));
         } else if (this.drivePopup.active) {
             const targetGeo = this.drivePopup.targetPane === 'left' ? layout.leftPane : layout.rightPane;
-            out.push(this.drivePopup.render(layout.listStart, targetGeo.startCol, t, targetGeo.width));
+            out.push(this.drivePopup.render(layout.listStart, targetGeo.startCol, t, targetGeo.width, layout.listHeight));
             out.push(this.drivePopup.renderShadow(cellAt));
         } else if (this.waitingMode) {
             out.push(hideCursor());

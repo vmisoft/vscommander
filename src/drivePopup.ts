@@ -36,14 +36,16 @@ export class DrivePopup extends Popup {
         super.open();
         this.targetPane = target;
         let locationDesc = 'N/A';
+        let locationPath = '';
         if (paneCwd) {
             try {
                 const stat = fs.statSync(paneCwd);
                 if (stat.isDirectory()) {
                     locationDesc = path.basename(paneCwd) || paneCwd;
+                    locationPath = paneCwd;
                 }
             } catch {
-                // path doesn't exist on disk
+                locationDesc = paneCwd;
             }
         }
         const otherSide = target === 'left' ? 'Right' : 'Left';
@@ -52,7 +54,7 @@ export class DrivePopup extends Popup {
             description: locationDesc,
             totalSize: 0,
             freeSpace: 0,
-            path: locationDesc === 'N/A' ? '' : paneCwd!,
+            path: locationPath,
             group: 'location',
         };
         this.entries = [...entries, locationEntry];
@@ -106,7 +108,6 @@ export class DrivePopup extends Popup {
 
         if (data.length === 1) {
             const ch = data;
-            const workspaceStart = this.entries.findIndex(e => e.group === 'workspace');
 
             if (ch === '`') {
                 const locIdx = this.entries.findIndex(e => e.group === 'location');
@@ -117,28 +118,9 @@ export class DrivePopup extends Popup {
                 return { action: 'consumed' };
             }
 
-            if (ch === '0') {
-                if (workspaceStart >= 0) {
-                    this.cursor = workspaceStart;
-                    return this.closeWithConfirm();
-                }
-                return { action: 'consumed' };
-            }
-
-            if (ch >= '1' && ch <= '9') {
-                const driveEntries = this.entries.filter(e => e.group === 'drive');
-                const driveIdx = parseInt(ch, 10) - 1;
-                if (driveIdx >= 0 && driveIdx < driveEntries.length) {
-                    const target = driveEntries[driveIdx];
-                    this.cursor = this.entries.indexOf(target);
-                    return this.closeWithConfirm();
-                }
-                return { action: 'consumed' };
-            }
-
-            const lower = ch.toLowerCase();
-            if (lower >= 'a' && lower <= 'z') {
-                if (os.platform() === 'win32') {
+            if (os.platform() === 'win32') {
+                const lower = ch.toLowerCase();
+                if (lower >= 'a' && lower <= 'z') {
                     const driveIdx = this.entries.findIndex(
                         e => e.group === 'drive' && e.label.toLowerCase().startsWith(lower),
                     );
@@ -147,14 +129,26 @@ export class DrivePopup extends Popup {
                         return this.closeWithConfirm();
                     }
                 }
+            }
 
-                if (workspaceStart >= 0) {
-                    const offset = lower.charCodeAt(0) - 97 + 1;
-                    const targetIdx = workspaceStart + offset;
-                    if (targetIdx < this.entries.length) {
-                        this.cursor = targetIdx;
-                        return this.closeWithConfirm();
-                    }
+            const globalIdx = DrivePopup.prefixToIndex(ch);
+            if (globalIdx >= 0) {
+                const driveEntries = this.entries.filter(e => e.group === 'drive');
+                const homeEntries = this.entries.filter(e => e.group === 'home');
+                const workspaceEntries = this.entries.filter(e => e.group === 'workspace');
+
+                let target: DriveEntry | undefined;
+                if (globalIdx < driveEntries.length) {
+                    target = driveEntries[globalIdx];
+                } else if (globalIdx < driveEntries.length + homeEntries.length) {
+                    target = homeEntries[globalIdx - driveEntries.length];
+                } else if (globalIdx < driveEntries.length + homeEntries.length + workspaceEntries.length) {
+                    target = workspaceEntries[globalIdx - driveEntries.length - homeEntries.length];
+                }
+
+                if (target) {
+                    this.cursor = this.entries.indexOf(target);
+                    return this.closeWithConfirm();
                 }
                 return { action: 'consumed' };
             }
@@ -244,8 +238,8 @@ export class DrivePopup extends Popup {
 
         const sections: TableSection[] = [];
         if (driveRows.length > 0) sections.push({ rows: driveRows });
-        if (homeRows.length > 0) sections.push({ rows: homeRows });
-        if (workspaceRows.length > 0) sections.push({ rows: workspaceRows, startIndex: 9 });
+        if (homeRows.length > 0) sections.push({ rows: homeRows, startIndex: driveEntries.length });
+        if (workspaceRows.length > 0) sections.push({ rows: workspaceRows, startIndex: driveEntries.length + homeEntries.length });
         if (locationRows.length > 0) sections.push({ rows: locationRows });
 
         const table = new PopupTable();
@@ -263,10 +257,10 @@ export class DrivePopup extends Popup {
         return {
             table,
             styles: {
-                body: theme.driveBody,
-                label: theme.driveLabel,
-                text: theme.driveText,
-                number: theme.driveNumber,
+                body: theme.popupActionBody,
+                label: theme.popupActionLabel,
+                text: theme.popupActionText,
+                number: theme.popupActionNumber,
             },
         };
     }
@@ -277,13 +271,12 @@ export class DrivePopup extends Popup {
         return table.renderToBuffer(styles);
     }
 
-    render(anchorRow: number, anchorCol: number, theme: Theme, maxWidth?: number): string {
+    render(anchorRow: number, anchorCol: number, theme: Theme, maxWidth?: number, listHeight?: number): string {
         if (!this.active || this.entries.length === 0) return '';
         const { table, styles } = this.buildTable(theme);
 
-        const popupOffset = 2;
         const rightEdge = maxWidth ? anchorCol + maxWidth - 1 : 999;
-        let popupCol = anchorCol + popupOffset;
+        let popupCol = anchorCol + 3;
 
         let fb = table.renderToBuffer(styles);
         if (fb.width === 0) return '';
@@ -297,7 +290,13 @@ export class DrivePopup extends Popup {
             }
         }
 
-        this.setScreenPosition(anchorRow, popupCol, fb.width, fb.height);
+        let popupRow = anchorRow;
+        if (typeof listHeight === 'number') {
+            const areaHeight = listHeight + 2;
+            popupRow = anchorRow + Math.max(0, Math.floor((areaHeight - fb.height) / 2));
+        }
+
+        this.setScreenPosition(popupRow, popupCol, fb.width, fb.height);
         return fb.toAnsi(this.screenRow, this.screenCol);
     }
 
@@ -327,6 +326,14 @@ export class DrivePopup extends Popup {
             });
         }
         return entries;
+    }
+
+    static prefixToIndex(ch: string): number {
+        if (ch >= '1' && ch <= '9') return ch.charCodeAt(0) - 49;
+        if (ch === '0') return 9;
+        const lower = ch.toLowerCase();
+        if (lower >= 'a' && lower <= 'z') return 10 + lower.charCodeAt(0) - 97;
+        return -1;
     }
 
     static discoverHomeDirs(): DriveEntry[] {

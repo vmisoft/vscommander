@@ -270,10 +270,10 @@ export class MkdirPopup extends Popup {
         const totalH = DIALOG_HEIGHT + 2 * this.padV;
         const boxRow = this.padV;
         const boxCol = this.padH;
-        const bodyStyle = t.dialogBody.idle;
-        const inputStyle = t.dialogInput.idle;
-        const cursorStyle = t.dialogInputCursor.idle;
-        const hotkeyStyle = t.dialogHotkey.idle;
+        const bodyStyle = t.popupInfoBody.idle;
+        const inputStyle = t.popupInfoInput.idle;
+        const cursorStyle = t.popupInfoInputCursor.idle;
+        const hotkeyStyle = t.popupInfoHotkey.idle;
         const fieldCol = boxCol + 1 + LABEL_WIDTH;
         const arrowCol = boxCol + innerW - 1;
 
@@ -282,7 +282,7 @@ export class MkdirPopup extends Popup {
         fb.drawBox(boxRow, boxCol, w, DIALOG_HEIGHT, bodyStyle, DBOX, 'Make directory');
 
         // Row 1: label
-        fb.write(boxRow + 1, boxCol + 1, ' Create the directory:' + ' '.repeat(Math.max(0, innerW - 21)), t.dialogLabel.idle);
+        fb.write(boxRow + 1, boxCol + 1, ' Create the directory:' + ' '.repeat(Math.max(0, innerW - 21)), t.popupInfoLabel.idle);
         fb.write(boxRow + 1, boxCol + 13, 'd', hotkeyStyle);
 
         // Row 2: name input
@@ -296,7 +296,7 @@ export class MkdirPopup extends Popup {
         fb.write(boxRow + 4, boxCol + 1, ' Link type:   ', bodyStyle);
         fb.write(boxRow + 4, boxCol + 2, 'L', hotkeyStyle);
         const dropFocused = this.focusIndex === 1;
-        const dropFieldStyle = dropFocused ? t.dialogDropdown.idle : inputStyle;
+        const dropFieldStyle = dropFocused ? t.popupInfoDropdown.idle : inputStyle;
         fb.blit(boxRow + 4, fieldCol, this.linkTypeDropdown.renderToBuffer(inputStyle, dropFieldStyle, dropFocused));
         fb.write(boxRow + 4, arrowCol, ARROW_DOWN, bodyStyle);
 
@@ -308,21 +308,21 @@ export class MkdirPopup extends Popup {
 
         // Row 6: checkbox
         const cbFocused = this.focusIndex === 3;
-        const cbStyle = cbFocused ? t.dialogInput.idle : t.dialogBody.idle;
-        fb.blit(boxRow + 6, boxCol + 2, this.multipleCheckbox.renderToBuffer(t.dialogBody.idle, cbStyle, cbFocused));
-        fb.write(boxRow + 6, boxCol + 14, 'm', t.dialogHotkey.idle);
+        const cbStyle = cbFocused ? t.popupInfoInput.idle : t.popupInfoBody.idle;
+        fb.blit(boxRow + 6, boxCol + 2, this.multipleCheckbox.renderToBuffer(t.popupInfoBody.idle, cbStyle, cbFocused));
+        fb.write(boxRow + 6, boxCol + 14, 'm', t.popupInfoHotkey.idle);
 
         // Row 7: separator
         fb.drawSeparator(boxRow + 7, boxCol, w, bodyStyle, MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
 
         // Row 8: buttons
         const btnFocused = this.focusIndex === 4;
-        fb.blit(boxRow + 8, boxCol + 1, this.buttons.renderToBuffer(innerW, t.dialogBody.idle, t.dialogButton.idle, t.dialogButton.selected, btnFocused));
+        fb.blit(boxRow + 8, boxCol + 1, this.buttons.renderToBuffer(innerW, t.popupInfoBody.idle, t.popupInfoButton.idle, t.popupInfoButton.selected, btnFocused));
 
         // Dropdown popup overlay (if open)
         if (this.linkTypeDropdown.isOpen) {
             fb.blit(boxRow + 5, fieldCol - 1, this.linkTypeDropdown.renderPopupToBuffer(
-                t.dialogBody.idle, t.dialogInput.idle, t.dialogDropdown.selected
+                t.popupInfoBody.idle, t.popupInfoInput.idle, t.popupInfoDropdown.selected
             ));
         }
 
@@ -345,8 +345,8 @@ export class MkdirPopup extends Popup {
         const boxStartCol = this.screenCol + this.padH;
         const nameCol = boxStartCol + 2;
         const fieldCol = boxStartCol + 1 + LABEL_WIDTH;
-        const inputStyle = t.dialogInput.idle;
-        const cursorStyle = t.dialogInputCursor.idle;
+        const inputStyle = t.popupInfoInput.idle;
+        const cursorStyle = t.popupInfoInputCursor.idle;
 
         let out = '';
         if (this.focusIndex === 0) {

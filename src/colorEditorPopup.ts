@@ -505,10 +505,10 @@ export class ColorEditorPopup extends Popup {
 
     override renderToBuffer(theme: Theme): FrameBuffer {
         const t = theme;
-        const bodyStyle = t.dialogBody.idle;
-        const inputStyle = t.dialogInput.idle;
-        const cursorStyle = t.dialogInputCursor.idle;
-        const labelStyle = t.dialogLabel.idle;
+        const bodyStyle = t.popupInfoBody.idle;
+        const inputStyle = t.popupInfoInput.idle;
+        const cursorStyle = t.popupInfoInputCursor.idle;
+        const labelStyle = t.popupInfoLabel.idle;
 
         const totalW = POPUP_WIDTH + 2 * this.padding * 2;
         const totalH = POPUP_HEIGHT + 2 * this.padding;
@@ -538,8 +538,8 @@ export class ColorEditorPopup extends Popup {
                 continue;
             }
             const style = v.isCurrent && this.focusArea === FOCUS_LIST
-                ? t.dialogInput.idle : bodyStyle;
-            const highlightStyle = v.isCurrent ? t.dialogInput.idle : bodyStyle;
+                ? t.popupInfoInput.idle : bodyStyle;
+            const highlightStyle = v.isCurrent ? t.popupInfoInput.idle : bodyStyle;
             fb.fill(listTop + r, listLeft, LIST_WIDTH, 1, ' ', v.isCurrent ? highlightStyle : bodyStyle);
             if (v.elem.isGroup) {
                 fb.write(listTop + r, listLeft, v.elem.label.slice(0, LIST_WIDTH), labelStyle);
@@ -598,13 +598,13 @@ export class ColorEditorPopup extends Popup {
 
         const btnRow = boxRow + POPUP_HEIGHT - 2;
         const btnFocused = this.focusArea === FOCUS_BUTTONS;
-        fb.blit(btnRow, boxCol + 1, this.buttons.renderToBuffer(innerW, bodyStyle, t.dialogButton.idle, t.dialogButton.selected, btnFocused));
+        fb.blit(btnRow, boxCol + 1, this.buttons.renderToBuffer(innerW, bodyStyle, t.popupInfoButton.idle, t.popupInfoButton.selected, btnFocused));
 
         return fb;
     }
 
     private renderGrid(fb: FrameBuffer, row: number, col: number, selectedIdx: number, focused: boolean, theme: Theme): void {
-        const bodyStyle = theme.dialogBody.idle;
+        const bodyStyle = theme.popupInfoBody.idle;
         for (let r = 0; r < 2; r++) {
             for (let c = 0; c < 8; c++) {
                 const idx = r * 8 + c;
@@ -645,8 +645,8 @@ export class ColorEditorPopup extends Popup {
         const boxStartCol = this.screenCol + this.padding * 2;
         const listTop = boxStartRow + 1;
         const rightLeft = boxStartCol + 1 + LIST_WIDTH + 1;
-        const inputStyle = t.dialogInput.idle;
-        const cursorStyle = t.dialogInputCursor.idle;
+        const inputStyle = t.popupInfoInput.idle;
+        const cursorStyle = t.popupInfoInputCursor.idle;
 
         let out = '';
         if (this.focusArea === FOCUS_FG_HEX) {

@@ -28,6 +28,7 @@ const MENU_INDENT = 4;
 export type MenuCommand =
     | { type: 'columns'; pane: 'left' | 'right'; columns: number }
     | { type: 'sort'; pane: 'left' | 'right'; mode: SortMode }
+    | { type: 'openSortMenu'; pane: 'left' | 'right' }
     | { type: 'reread'; pane: 'left' | 'right' }
     | { type: 'changeDrive'; pane: 'left' | 'right' }
     | { type: 'toggleDotfiles' }
@@ -105,11 +106,7 @@ export class MenuPopup extends Popup {
             { type: 'item', label: 'Medium', shortcut: 'Ctrl+2', checked: cols === 2, command: `${pane}-columns-2` },
             { type: 'item', label: 'Full', shortcut: 'Ctrl+3', checked: cols === 3, command: `${pane}-columns-3` },
             { type: 'separator' },
-            { type: 'item', label: 'Sort by name', hotkeyIndex: 8, checked: sortMode === 'name', command: `${pane}-sort-name` },
-            { type: 'item', label: 'Sort by extension', hotkeyIndex: 8, checked: sortMode === 'extension', command: `${pane}-sort-extension` },
-            { type: 'item', label: 'Sort by size', hotkeyIndex: 8, checked: sortMode === 'size', command: `${pane}-sort-size` },
-            { type: 'item', label: 'Sort by date', hotkeyIndex: 11, checked: sortMode === 'date', command: `${pane}-sort-date` },
-            { type: 'item', label: 'Unsorted', checked: sortMode === 'unsorted', command: `${pane}-sort-unsorted` },
+            { type: 'item', label: 'Sort modes', hotkeyIndex: 0, shortcut: 'Ctrl+F12', command: `${pane}-sort-menu` },
             { type: 'separator' },
             { type: 'item', label: 'Show dotfiles', shortcut: 'Ctrl+H', checked: settings.showDotfiles, command: 'toggle-dotfiles' },
             { type: 'item', label: 'Re-read', shortcut: 'Ctrl+R', command: `${pane}-reread` },
@@ -262,6 +259,9 @@ export class MenuPopup extends Popup {
         if (parts.length === 3 && parts[1] === 'columns') {
             const pane = parts[0] as 'left' | 'right';
             return { type: 'columns', pane, columns: parseInt(parts[2], 10) };
+        }
+        if (parts.length === 3 && parts[1] === 'sort' && parts[2] === 'menu') {
+            return { type: 'openSortMenu', pane: parts[0] as 'left' | 'right' };
         }
         if (parts.length === 3 && parts[1] === 'sort') {
             const pane = parts[0] as 'left' | 'right';

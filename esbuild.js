@@ -34,7 +34,7 @@ async function main() {
         sourcesContent: false,
         platform: 'node',
         outfile: 'dist/extension.js',
-        external: ['vscode', 'node-pty'],
+        external: ['vscode', 'node-pty', 'koffi', '7z-wasm', 'node-unrar-js'],
         logLevel: 'warning',
         plugins: [esbuildProblemMatcherPlugin],
     });

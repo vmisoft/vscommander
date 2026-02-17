@@ -204,7 +204,7 @@ export class ThemePopup extends Popup {
 
         this.setScreenPosition(popupTop, popupLeft, popupWidth, popupHeight);
 
-        const bodyStyle = theme.dialogBody.idle;
+        const bodyStyle = theme.popupInfoBody.idle;
         const listWidth = 16;
         const dividerCol = listWidth + 1;
         const previewStartCol = dividerCol + 1;
@@ -227,7 +227,7 @@ export class ThemePopup extends Popup {
         const btnRow = popupHeight - 2;
         fb.blit(btnRow, 1, this.buttonGroup.renderToBuffer(
             popupWidth - 2, bodyStyle,
-            theme.dialogButton.idle, theme.dialogButton.selected,
+            theme.popupInfoButton.idle, theme.popupInfoButton.selected,
             this.focusArea === 1));
 
         const listStyle = theme.menuItem.idle;

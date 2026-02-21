@@ -57,6 +57,7 @@ export interface Theme {
     menuItemHotkey: RenderStyle;
     menuItemDisabled: RenderStyle;
     menuBorder: RenderStyle;
+    helpLink: RenderStyle;
     selectedFile: RenderStyle;
     selectedDir: RenderStyle;
     symlink: RenderStyle;
@@ -115,6 +116,7 @@ export const DEFAULT_THEME: Theme = {
     menuItemHotkey: rs(s(BRIGHT_YELLOW, DARK_TEAL, true), s(BRIGHT_YELLOW, TEAL, true)),
     menuItemDisabled: rs(s(GREY, DARK_TEAL)),
     menuBorder: rs(s(PURE_WHITE, DARK_TEAL)),
+    helpLink: rs(s(BRIGHT_YELLOW, DARK_TEAL), s(PURE_WHITE, BLACK)),
     selectedFile: rs(s(BRIGHT_YELLOW, DARK_BLUE, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
     selectedDir: rs(s(BRIGHT_YELLOW, DARK_BLUE, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
     symlink: rs(s(BRIGHT_YELLOW, DARK_BLUE), s(BRIGHT_YELLOW, DARK_TEAL)),
@@ -178,6 +180,7 @@ export const VSCODE_DARK_THEME: Theme = {
     menuItemHotkey: rs(s(A11, A6, true), s(A11, A7, true)),
     menuItemDisabled: rs(s(A8, A6)),
     menuBorder: rs(s(A0, A6)),
+    helpLink: rs(s(D, D), s(D, D, true)),
     selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
     selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
     symlink: rs(s(A11, D), s(A11, A7)),
@@ -222,6 +225,7 @@ export const VSCODE_LIGHT_THEME: Theme = {
     menuItemHotkey: rs(s(A3, A14, true), s(A3, A15, true)),
     menuItemDisabled: rs(s(A8, A14)),
     menuBorder: rs(s(A0, A14)),
+    helpLink: rs(s(D, D), s(D, D, true)),
     selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
     selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
     symlink: rs(s(A3, D), s(A3, A7)),
@@ -269,6 +273,7 @@ export function applyColorOverrides(base: Theme, overrides: Record<string, Color
 }
 
 export interface KeyBindings {
+    help: string;
     view: string;
     edit: string;
     copy: string;
@@ -289,6 +294,7 @@ export interface KeyBindings {
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
+    help: 'F1',
     view: 'F3',
     edit: 'F4',
     copy: 'F5',
@@ -391,6 +397,7 @@ export interface PanelSettings {
     sortDirsFirst: boolean;
     useSortGroups: boolean;
     panelColumns: number;
+    interceptF1: boolean;
     theme: Theme;
     baseTheme: Theme;
     themeName: ThemeName;
@@ -411,6 +418,7 @@ export const DEFAULT_SETTINGS: PanelSettings = {
     sortDirsFirst: true,
     useSortGroups: false,
     panelColumns: 2,
+    interceptF1: true,
     theme: DEFAULT_THEME,
     baseTheme: DEFAULT_THEME,
     themeName: 'far',
@@ -459,5 +467,6 @@ export const THEME_KEYS: (keyof Theme)[] = [
     'popupActionBody', 'popupActionLabel', 'popupActionText', 'popupActionNumber',
     'menuBar', 'menuBarHotkey', 'menuItem', 'menuItemHotkey',
     'menuItemDisabled', 'menuBorder',
+    'helpLink',
     'selectedFile', 'selectedDir', 'symlink',
 ];

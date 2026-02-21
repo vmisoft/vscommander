@@ -22,9 +22,9 @@ import './archive7z';
 import './archiveRar';
 
 const ALL_VSCOMMANDER_KEYS = [
-    'theme', 'showDotfiles', 'clock', 'panelColumns',
+    'theme', 'showDotfiles', 'clock', 'panelColumns', 'interceptF1',
     'sortMode', 'sortReversed', 'sortDirsFirst', 'useSortGroups',
-    'keyView', 'keyEdit', 'keyCopy', 'keyMove', 'keyMkdir', 'keyDelete',
+    'keyHelp', 'keyView', 'keyEdit', 'keyCopy', 'keyMove', 'keyMkdir', 'keyDelete',
     'keyForceDelete', 'keyQuit', 'keyMenu', 'keyDriveLeft', 'keyDriveRight',
     'keyToggleDotfiles', 'keyTogglePane', 'keyDetach', 'keyResizeLeft',
     'keyResizeRight', 'keyQuickView',
@@ -67,6 +67,7 @@ function readSettings(): PanelSettings {
     return mergeSettings({
         showDotfiles: cfg.get<boolean>('showDotfiles', DEFAULT_SETTINGS.showDotfiles),
         clockEnabled: cfg.get<boolean>('clock', DEFAULT_SETTINGS.clockEnabled),
+        interceptF1: cfg.get<boolean>('interceptF1', DEFAULT_SETTINGS.interceptF1),
         sortMode: cfg.get<string>('sortMode', DEFAULT_SETTINGS.sortMode),
         sortReversed: cfg.get<boolean>('sortReversed', DEFAULT_SETTINGS.sortReversed),
         sortDirsFirst: cfg.get<boolean>('sortDirsFirst', DEFAULT_SETTINGS.sortDirsFirst),
@@ -85,6 +86,7 @@ function readSettings(): PanelSettings {
             workspace: hasSettingsInScope('workspace'),
         },
         keys: {
+            help: cfg.get<string>('keyHelp', DEFAULT_KEY_BINDINGS.help),
             view: cfg.get<string>('keyView', DEFAULT_KEY_BINDINGS.view),
             edit: cfg.get<string>('keyEdit', DEFAULT_KEY_BINDINGS.edit),
             copy: cfg.get<string>('keyCopy', DEFAULT_KEY_BINDINGS.copy),
@@ -139,9 +141,11 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private themeListener: vscode.Disposable | undefined;
     private configListener: vscode.Disposable | undefined;
     private suppressConfigReload = false;
+    private extensionPath: string;
 
-    constructor(cwd: string) {
+    constructor(cwd: string, extensionPath: string) {
         this.cwd = cwd;
+        this.extensionPath = extensionPath;
         const host: QuickViewHost = {
             openSplit: (filePath, targetType, side) => {
                 const uri = targetType === 'dir'
@@ -263,12 +267,14 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
         const settings = readSettings();
         this.panel = new Panel(this.cols, this.rows, this.cwd, settings);
+        this.panel.docsDir = path.join(this.extensionPath, 'docs');
 
         this.startClockTimer();
         this.restartCmdBlinkTimer();
 
         this.writeEmitter.fire(this.panel.show());
         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', true);
+        vscode.commands.executeCommand('setContext', 'vscommander.interceptF1', settings.interceptF1);
 
         // Spawn shell asynchronously — pty.spawn() with ConPTY can block
         // the event loop on Windows; deferring ensures the panel renders first.
@@ -492,6 +498,10 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                     this.writeEmitter.fire(this.panel.redraw());
                     break;
                 }
+                case 'interceptF1Changed':
+                    this.writeEmitter.fire(result.data);
+                    vscode.commands.executeCommand('setContext', 'vscommander.interceptF1', result.interceptF1);
+                    break;
                 case 'saveSettings':
                     this.saveAllSettings(result.scope);
                     break;
@@ -1082,12 +1092,14 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         await cfg.update('theme', s.themeName, target);
         await cfg.update('showDotfiles', s.showDotfiles, target);
         await cfg.update('clock', s.clockEnabled, target);
+        await cfg.update('interceptF1', s.interceptF1, target);
         await cfg.update('panelColumns', s.panelColumns, target);
         const activePane = this.panel.activePaneObj;
         await cfg.update('sortMode', activePane.sortMode, target);
         await cfg.update('sortReversed', activePane.sortReversed, target);
         await cfg.update('sortDirsFirst', activePane.sortDirsFirst, target);
         await cfg.update('useSortGroups', s.useSortGroups, target);
+        await cfg.update('keyHelp', s.keys.help, target);
         await cfg.update('keyView', s.keys.view, target);
         await cfg.update('keyEdit', s.keys.edit, target);
         await cfg.update('keyCopy', s.keys.copy, target);
@@ -1159,7 +1171,7 @@ export function activate(context: vscode.ExtensionContext) {
         const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
             || os.homedir();
 
-        const pty = new VSCommanderTerminal(cwd);
+        const pty = new VSCommanderTerminal(cwd, context.extensionPath);
         activeTerminal = pty;
 
         const terminal = vscode.window.createTerminal({

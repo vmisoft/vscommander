@@ -178,7 +178,7 @@ export class MkdirPopup extends Popup {
         }
         if (data === '\x1bm' || data === '\x1bM') {
             this.focusIndex = 3;
-            this.multipleCheckbox.checked = !this.multipleCheckbox.checked;
+            this.multipleCheckbox.toggle();
             this.resetActiveBlink();
             return { action: 'consumed' };
         }
@@ -209,9 +209,8 @@ export class MkdirPopup extends Popup {
             this.resetActiveBlink();
             return { action: 'consumed' };
         }
-        if (relRow === 6) {
+        if (this.multipleCheckbox.handleClick(relRow, 6)) {
             this.focusIndex = 3;
-            this.multipleCheckbox.checked = !this.multipleCheckbox.checked;
             this.resetActiveBlink();
             return { action: 'consumed' };
         }

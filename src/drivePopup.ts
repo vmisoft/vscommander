@@ -24,6 +24,7 @@ export class DrivePopup extends Popup {
     cursor = 0;
     override padding = 0;
     private separatorIndex = -1;
+    private savedCursor: Record<string, number> = {};
 
     constructor() {
         super();
@@ -58,11 +59,13 @@ export class DrivePopup extends Popup {
             group: 'location',
         };
         this.entries = [...entries, locationEntry];
-        this.cursor = 0;
+        const saved = this.savedCursor[target];
+        this.cursor = (saved !== undefined && saved < this.entries.length) ? saved : 0;
         this.separatorIndex = this.entries.findIndex(e => e.group === 'workspace');
     }
 
     close(): void {
+        this.savedCursor[this.targetPane] = this.cursor;
         super.close();
     }
 

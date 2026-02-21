@@ -103,8 +103,7 @@ export class OverwritePopup extends Popup {
         }
 
         if (this.focusIndex === 0) {
-            if (data === ' ') {
-                this.checkbox.checked = !this.checkbox.checked;
+            if (this.checkbox.handleInput(data)) {
                 return { action: 'consumed' };
             }
             if (data === '\x1b[B' || data === '\r') {
@@ -308,9 +307,8 @@ export class OverwritePopup extends Popup {
         const btnRow1 = this.padV + 9;
         const btnRow2 = this.padV + 10;
 
-        if (fbRow === checkboxRow) {
+        if (this.checkbox.handleClick(fbRow, checkboxRow)) {
             this.focusIndex = 0;
-            this.checkbox.checked = !this.checkbox.checked;
             return { action: 'consumed' };
         }
 

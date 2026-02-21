@@ -431,8 +431,7 @@ export class ColorEditorPopup extends Popup {
     }
 
     private handleBoldInput(data: string): PopupInputResult {
-        if (data === ' ') {
-            this.boldCheckbox.checked = !this.boldCheckbox.checked;
+        if (this.boldCheckbox.handleInput(data)) {
             this.saveCurrentElement();
             return { action: 'consumed' };
         }
@@ -770,7 +769,7 @@ export class ColorEditorPopup extends Popup {
 
         if (fbRow === listTop + 12 && fbCol >= rightLeft) {
             this.focusArea = FOCUS_BOLD;
-            this.boldCheckbox.checked = !this.boldCheckbox.checked;
+            this.boldCheckbox.toggle();
             this.saveCurrentElement();
             return { action: 'consumed' };
         }

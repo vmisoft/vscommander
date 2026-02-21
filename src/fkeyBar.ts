@@ -10,6 +10,7 @@ export class FKeyBar {
         const out: string[] = [];
 
         const actionSlots: { action: keyof KeyBindings; label: string }[] = [
+            { action: 'help', label: 'Help' },
             { action: 'edit', label: 'Edit' },
             { action: 'copy', label: 'Copy' },
             { action: 'move', label: 'Move' },
@@ -19,7 +20,7 @@ export class FKeyBar {
             { action: 'quit', label: 'Quit' },
         ];
         const defaultLabels: Record<number, string> = {
-            1: 'Help', 2: 'Menu', 3: 'View',
+            2: 'Menu', 3: 'View',
         };
         const keys: { num: string; label: string; inactive: boolean }[] = [];
         for (let i = 1; i <= 10; i++) {

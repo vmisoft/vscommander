@@ -4,6 +4,12 @@
 
 A dual-panel file manager inside your VS Code editor, styled after Far Manager. It opens as an editor tab with the file manager panel shown by default. Toggle the panel off with `Ctrl+O` to use the underlying shell, toggle it back on to browse files. Your shell session stays intact underneath.
 
+## Built-in Help
+
+Press `F1` while the panel is open to access the built-in help system. It shows a table of contents with all help topics -- navigate with arrow keys, press Enter to read a topic, Tab/Shift+Tab to jump between links, Backspace to go back, Escape to close.
+
+The help content is also available as markdown files in the [`docs/`](docs/) folder.
+
 ## Getting Started
 
 1. Press `Alt+C` to open VSCommander (configurable in VS Code keyboard shortcuts)
@@ -59,6 +65,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `End` | Jump to last entry |
 | `Tab` | Switch between left and right pane |
 | `Enter` | Open selected directory / enter archive / open file in editor / execute command if text is entered |
+| `F1` | Open built-in help system |
 | `F3` | View -- highlight file in VS Code Explorer; open in system file manager if outside workspace |
 | `F4` | Open selected file in VS Code editor |
 | `F5` | Copy selected file(s) to the other pane |
@@ -318,7 +325,7 @@ The bottom row shows function key labels styled after Far Manager. Unimplemented
 
 | Key | Label | Status |
 |-----|-------|--------|
-| F1 | Help | Inactive (not yet implemented) |
+| F1 | Help | Opens built-in help system with topic navigation |
 | F2 | Menu | Inactive (not yet implemented) |
 | F3 | View | Inactive (not yet implemented) |
 | F4 | Edit | Opens selected file in VS Code editor |
@@ -560,6 +567,7 @@ Every panel action can be remapped to a different key. Valid key names include `
 
 | Setting | Type | Default | Action |
 |---------|------|---------|--------|
+| `vscommander.keyHelp` | string | `F1` | Help (open help system) |
 | `vscommander.keyView` | string | `F3` | View (reveal file in Explorer) |
 | `vscommander.keyEdit` | string | `F4` | Edit (open file in editor) |
 | `vscommander.keyCopy` | string | `F5` | Copy (copy files) |

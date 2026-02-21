@@ -24,6 +24,7 @@ The extension runs as a terminal overlay, you can toggle the file panel on and o
 - **Half-panel mode**: `Ctrl+P` hides one pane to show color-rich terminal output alongside your files; commands run inline without hiding the panel
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
 - **Top menu bar**: F9 opens a Far Manager-style menu with Left, Files, Commands, Options, Right menus for sorting, column layout, and all panel operations
+- **Built-in help system**: Press `F1` for a Far Manager-style help viewer with topic navigation, scrollable content, hotkey highlighting, and link following
 - **Archive browsing**: Navigate into ZIP, TAR, 7Z, and RAR archives as if they were directories; view, extract, add, delete, and move files within archives (ZIP and 7Z support full write operations)
 - **Sorting**: Sort each pane independently by name, extension, size, date, or unsorted
 - **File operations**: F5 Copy, F6 Move/Rename with overwrite handling and progress display
@@ -76,6 +77,7 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `Ctrl+P` | Half-panel mode (show terminal in one pane) |
 | `Ctrl+Q` | Quick View -- preview file in VS Code split editor |
 | `Ctrl+Left` / `Ctrl+Right` | Resize panes |
+| `F1` | Help -- built-in help system |
 | `F3` | View -- highlight file in VS Code Explorer |
 | `F4` | Edit -- open file in VS Code editor |
 | `F5` | Copy files to other pane |
@@ -96,6 +98,7 @@ Then press **F5** in VS Code to launch the Extension Development Host.
 | `vscommander.showDotfiles` | `true` | Show hidden files (dotfiles) |
 | `vscommander.clock` | `true` | Show clock in the top-right corner |
 | `vscommander.panelColumns` | `2` | File columns per pane (1, 2, or 3) |
+| `vscommander.keyHelp` | `F1` | Key binding for Help |
 | `vscommander.keyView` | `F3` | Key binding for View |
 | `vscommander.keyEdit` | `F4` | Key binding for Edit |
 | `vscommander.keyCopy` | `F5` | Key binding for Copy |

@@ -35,6 +35,14 @@
       {
         "command": "workbench.action.terminal.sendSequence",
         "args": {
+          "text": "\u001bOP"
+        },
+        "key": "f1",
+        "when": "terminalFocus && vscommander.panelVisible && vscommander.interceptF1"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
           "text": "\u001b[1;3P"
         },
         "key": "alt+f1",
@@ -242,6 +250,11 @@
             "type": "boolean",
             "default": true,
             "description": "Show clock in the top-right corner of the panel"
+          },
+          "vscommander.interceptF1": {
+            "type": "boolean",
+            "default": true,
+            "description": "Intercept F1 key to show the built-in help system instead of VS Code help"
           }
         }
       },
@@ -308,6 +321,11 @@
       {
         "title": "Hotkeys",
         "properties": {
+          "vscommander.keyHelp": {
+            "type": "string",
+            "default": "F1",
+            "description": "Key binding for Help (open help system)"
+          },
           "vscommander.keyView": {
             "type": "string",
             "default": "F3",
@@ -1407,6 +1425,36 @@
             "type": "object",
             "default": {},
             "description": "Menu dropdown borders",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Help",
+        "properties": {
+          "vscommander.colors.helpLink": {
+            "type": "object",
+            "default": {},
+            "description": "Help topic links (idle and selected/cursor)",
             "properties": {
               "fg": {
                 "type": "string"

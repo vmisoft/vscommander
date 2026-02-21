@@ -21,6 +21,7 @@ import { OverwritePopup } from './overwritePopup';
 import { ColorEditorPopup } from './colorEditorPopup';
 import { ThemePopup } from './themePopup';
 import { SortPopup, SortPopupResult } from './sortPopup';
+import { HelpPopup } from './helpPopup';
 import { ColorOverride, ThemeName, applyColorOverrides, themeToOverrides, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS } from './settings';
 import { TerminalBuffer } from './terminalBuffer';
 import { getCellAt } from './cellQuery';
@@ -57,6 +58,7 @@ export type PanelInputResult =
     | { action: 'mkdirInArchive'; dirPath: string }
     | { action: 'moveFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string }
     | { action: 'moveToArchive'; sourcePaths: string[]; archiveDir: string }
+    | { action: 'interceptF1Changed'; data: string; interceptF1: boolean }
     | { action: 'none' };
 
 export class Panel {
@@ -80,6 +82,8 @@ export class Panel {
     colorEditorPopup: ColorEditorPopup;
     themePopup: ThemePopup;
     sortPopup: SortPopup;
+    helpPopup: HelpPopup;
+    docsDir = '';
     termBuffer: TerminalBuffer;
     private terminalArea = new TerminalArea();
     private fkeyBar = new FKeyBar();
@@ -119,6 +123,7 @@ export class Panel {
         this.colorEditorPopup = new ColorEditorPopup();
         this.themePopup = new ThemePopup();
         this.sortPopup = new SortPopup();
+        this.helpPopup = new HelpPopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
         this.syncPopupBounds();
     }
@@ -154,7 +159,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup, this.helpPopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -190,7 +195,7 @@ export class Panel {
             || this.copyProgressPopup.active || this.scanProgressPopup.active
             || this.deleteProgressPopup.active || this.overwritePopup.active
             || this.colorEditorPopup.active || this.themePopup.active
-            || this.sortPopup.active;
+            || this.sortPopup.active || this.helpPopup.active;
     }
 
     private get activePopupObj(): Popup | null {
@@ -199,6 +204,7 @@ export class Panel {
         if (this.copyProgressPopup.active) return this.copyProgressPopup;
         if (this.scanProgressPopup.active) return this.scanProgressPopup;
         if (this.deleteProgressPopup.active) return this.deleteProgressPopup;
+        if (this.helpPopup.active) return this.helpPopup;
         if (this.themePopup.active) return this.themePopup;
         if (this.colorEditorPopup.active) return this.colorEditorPopup;
         if (this.sortPopup.active) return this.sortPopup;
@@ -390,6 +396,17 @@ export class Panel {
             return this.resolveSortResult(this.sortPopup.handleInput(data));
         }
 
+        if (this.helpPopup.active) {
+            const helpResult = this.helpPopup.handleInput(data);
+            if (helpResult.action === 'close') this.helpPopup.close();
+            if (this.helpPopup.interceptF1Changed) {
+                this.settings.interceptF1 = this.helpPopup.interceptF1;
+                this.helpPopup.interceptF1Changed = false;
+                return { action: 'interceptF1Changed', data: this.render(), interceptF1: this.helpPopup.interceptF1 };
+            }
+            return { action: 'redraw', data: this.render() };
+        }
+
         if (this.menuPopup.active) {
             return this.resolveMenuResult(this.menuPopup.handleInput(data));
         }
@@ -423,6 +440,11 @@ export class Panel {
                 case 'passthrough':
                     break;
             }
+        }
+
+        if (matchesKeyBinding(data, this.settings.keys.help)) {
+            this.helpPopup.openHelp(this.docsDir, this.settings.interceptF1);
+            return { action: 'redraw', data: this.render() };
         }
 
         if (matchesKeyBinding(data, this.settings.keys.driveLeft)) {
@@ -1962,6 +1984,9 @@ export class Panel {
         } else if (this.colorEditorPopup.active) {
             out.push(this.colorEditorPopup.render(this.rows, this.cols, t));
             out.push(this.colorEditorPopup.renderShadow(cellAt));
+        } else if (this.helpPopup.active) {
+            out.push(this.helpPopup.render(this.rows, this.cols, t));
+            out.push(this.helpPopup.renderShadow(cellAt));
         } else if (this.sortPopup.active) {
             const sortGeo = this.sortPopup.targetPane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.sortPopup.render(sortGeo.startCol, sortGeo.width, t, layout.listStart, layout.listHeight));

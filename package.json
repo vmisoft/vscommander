@@ -1,0 +1,1515 @@
+{
+  "name": "vscommander",
+  "displayName": "VSCommander",
+  "description": "Dual-panel file manager overlaid on a real terminal",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vmisoft/vscommander.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vscommander.open",
+        "title": "VSCommander: Open Terminal"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "vscommander.open",
+        "key": "alt+c"
+      },
+      {
+        "command": "vscommander.toggle",
+        "key": "ctrl+o",
+        "when": "terminalFocus"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001bOP"
+        },
+        "key": "f1",
+        "when": "terminalFocus && vscommander.panelVisible && vscommander.interceptF1"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[1;3P"
+        },
+        "key": "alt+f1",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[1;3Q"
+        },
+        "key": "alt+f2",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001bOR"
+        },
+        "key": "f3",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[15~"
+        },
+        "key": "f5",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[1;5D"
+        },
+        "key": "ctrl+left",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[1;5C"
+        },
+        "key": "ctrl+right",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[1;5B"
+        },
+        "key": "ctrl+down",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[19~"
+        },
+        "key": "f8",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[24;5~"
+        },
+        "key": "ctrl+f12",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001bOj"
+        },
+        "key": "numpad_multiply",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001bOk"
+        },
+        "key": "numpad_add",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001bOm"
+        },
+        "key": "numpad_subtract",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[49;5u"
+        },
+        "key": "ctrl+1",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[50;5u"
+        },
+        "key": "ctrl+2",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[51;5u"
+        },
+        "key": "ctrl+3",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u0015"
+        },
+        "key": "ctrl+u",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[13;5u"
+        },
+        "key": "ctrl+enter",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[91;5u"
+        },
+        "key": "ctrl+[",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001b[93;5u"
+        },
+        "key": "ctrl+]",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "vscommander.quickView",
+        "key": "ctrl+q",
+        "when": "vscommander.panelVisible"
+      },
+      {
+        "command": "vscommander.togglePane",
+        "key": "ctrl+p",
+        "when": "vscommander.panelVisible"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vscommander",
+          "title": "VSCommander",
+          "icon": "media/icon-monochrome.svg"
+        }
+      ]
+    },
+    "views": {
+      "vscommander": [
+        {
+          "id": "vscommander.sidebar",
+          "name": "VSCommander"
+        }
+      ]
+    },
+    "viewsWelcome": [],
+    "configuration": [
+      {
+        "title": "Theme",
+        "properties": {
+          "vscommander.theme": {
+            "type": "string",
+            "enum": [
+              "far",
+              "vscode"
+            ],
+            "default": "far",
+            "description": "Color theme: 'far' for classic Far Manager colors, 'vscode' to match the active VS Code color theme"
+          }
+        }
+      },
+      {
+        "title": "Display",
+        "properties": {
+          "vscommander.panelColumns": {
+            "type": "number",
+            "default": 2,
+            "minimum": 1,
+            "maximum": 3,
+            "description": "Number of file columns per panel (1, 2, or 3)"
+          },
+          "vscommander.clock": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show clock in the top-right corner of the panel"
+          },
+          "vscommander.interceptF1": {
+            "type": "boolean",
+            "default": true,
+            "description": "Intercept F1 key to show the built-in help system instead of VS Code help"
+          }
+        }
+      },
+      {
+        "title": "Terminal",
+        "properties": {
+          "vscommander.windowsBackend": {
+            "type": "string",
+            "enum": [
+              "winpty",
+              "conpty"
+            ],
+            "default": "winpty",
+            "markdownDescription": "Windows PTY backend. `winpty` (default) is the legacy backend with broad compatibility. `conpty` uses the newer Windows Pseudo Console API but may hang on some systems. **Windows only** — ignored on other platforms."
+          }
+        }
+      },
+      {
+        "title": "File Navigation",
+        "properties": {
+          "vscommander.showDotfiles": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show dotfiles (hidden files) in the panel"
+          },
+          "vscommander.sortMode": {
+            "type": "string",
+            "default": "name",
+            "enum": [
+              "name",
+              "extension",
+              "size",
+              "date",
+              "unsorted",
+              "creationTime",
+              "accessTime",
+              "changeTime",
+              "description",
+              "owner",
+              "allocatedSize",
+              "hardLinks",
+              "streams",
+              "streamSize"
+            ],
+            "description": "Default sort mode for file panels"
+          },
+          "vscommander.sortReversed": {
+            "type": "boolean",
+            "default": false,
+            "description": "Reverse the default sort order"
+          },
+          "vscommander.sortDirsFirst": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show directories before files in file panels"
+          },
+          "vscommander.useSortGroups": {
+            "type": "boolean",
+            "default": false,
+            "description": "Use sort groups for file ordering"
+          }
+        }
+      },
+      {
+        "title": "Hotkeys",
+        "properties": {
+          "vscommander.keyHelp": {
+            "type": "string",
+            "default": "F1",
+            "description": "Key binding for Help (open help system)"
+          },
+          "vscommander.keyView": {
+            "type": "string",
+            "default": "F3",
+            "description": "Key binding for View (reveal file in Explorer)"
+          },
+          "vscommander.keyEdit": {
+            "type": "string",
+            "default": "F4",
+            "description": "Key binding for Edit (open file in editor)"
+          },
+          "vscommander.keyCopy": {
+            "type": "string",
+            "default": "F5",
+            "description": "Key binding for Copy (copy files)"
+          },
+          "vscommander.keyMove": {
+            "type": "string",
+            "default": "F6",
+            "description": "Key binding for Move/Rename (move or rename files)"
+          },
+          "vscommander.keyMkdir": {
+            "type": "string",
+            "default": "F7",
+            "description": "Key binding for Mkdir (create directory)"
+          },
+          "vscommander.keyDelete": {
+            "type": "string",
+            "default": "F8",
+            "description": "Key binding for Delete (move to Trash)"
+          },
+          "vscommander.keyForceDelete": {
+            "type": "string",
+            "default": "Shift+F8",
+            "description": "Key binding for permanent Delete (bypass Trash)"
+          },
+          "vscommander.keyQuit": {
+            "type": "string",
+            "default": "F10",
+            "description": "Key binding for Quit (close panel)"
+          },
+          "vscommander.keyMenu": {
+            "type": "string",
+            "default": "F9",
+            "description": "Key binding for Menu (open top menu bar)"
+          },
+          "vscommander.keyDriveLeft": {
+            "type": "string",
+            "default": "Alt+F1",
+            "description": "Key binding for Change Drive popup (left pane)"
+          },
+          "vscommander.keyDriveRight": {
+            "type": "string",
+            "default": "Alt+F2",
+            "description": "Key binding for Change Drive popup (right pane)"
+          },
+          "vscommander.keyToggleDotfiles": {
+            "type": "string",
+            "default": "Ctrl+H",
+            "description": "Key binding for toggling dotfile visibility"
+          },
+          "vscommander.keyTogglePane": {
+            "type": "string",
+            "default": "Ctrl+P",
+            "description": "Key binding for toggling inactive pane visibility"
+          },
+          "vscommander.keyDetach": {
+            "type": "string",
+            "default": "Alt+Enter",
+            "description": "Key binding for detach/attach fullscreen window"
+          },
+          "vscommander.keyResizeLeft": {
+            "type": "string",
+            "default": "Ctrl+Left",
+            "description": "Key binding for moving pane border left"
+          },
+          "vscommander.keyResizeRight": {
+            "type": "string",
+            "default": "Ctrl+Right",
+            "description": "Key binding for moving pane border right"
+          },
+          "vscommander.keyQuickView": {
+            "type": "string",
+            "default": "Ctrl+Q",
+            "description": "Key binding for Quick View (preview file in split editor)"
+          }
+        }
+      },
+      {
+        "title": "Colors: Panel",
+        "properties": {
+          "vscommander.colors.border": {
+            "type": "object",
+            "default": {},
+            "markdownDescription": "Panel borders and frame. All color settings accept: hex (`ff0000`), ANSI index (`@0`-`@15`), or `@d` for terminal default.",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.activePath": {
+            "type": "object",
+            "default": {},
+            "description": "Active pane directory path in top border",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.inactivePath": {
+            "type": "object",
+            "default": {},
+            "description": "Inactive pane directory path in top border",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.header": {
+            "type": "object",
+            "default": {},
+            "description": "Column headers (Name)",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.info": {
+            "type": "object",
+            "default": {},
+            "description": "Info bar (selected file details)",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.status": {
+            "type": "object",
+            "default": {},
+            "description": "Bottom border statistics",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.clock": {
+            "type": "object",
+            "default": {},
+            "description": "Clock display in top-right corner",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Files",
+        "properties": {
+          "vscommander.colors.file": {
+            "type": "object",
+            "default": {},
+            "description": "Regular files",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.directory": {
+            "type": "object",
+            "default": {},
+            "description": "Directories",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.hiddenFile": {
+            "type": "object",
+            "default": {},
+            "description": "Hidden files (dotfiles)",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.hiddenDir": {
+            "type": "object",
+            "default": {},
+            "description": "Hidden directories",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.selectedFile": {
+            "type": "object",
+            "default": {},
+            "description": "Selected (marked) files",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.selectedDir": {
+            "type": "object",
+            "default": {},
+            "description": "Selected (marked) directories",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.symlink": {
+            "type": "object",
+            "default": {},
+            "description": "Symlink arrow indicator",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Command Line & Keys",
+        "properties": {
+          "vscommander.colors.commandLine": {
+            "type": "object",
+            "default": {},
+            "description": "Command line row",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.commandLineBusy": {
+            "type": "object",
+            "default": {},
+            "description": "Command line when a command is running",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.fkeyNum": {
+            "type": "object",
+            "default": {},
+            "description": "Function key numbers (F1, F2, ...)",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.fkeyLabel": {
+            "type": "object",
+            "default": {},
+            "description": "Function key labels (Help, Edit, ...)",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Search",
+        "properties": {
+          "vscommander.colors.searchBody": {
+            "type": "object",
+            "default": {},
+            "description": "Quick search popup body",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.searchInput": {
+            "type": "object",
+            "default": {},
+            "description": "Quick search input field",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.searchCursor": {
+            "type": "object",
+            "default": {},
+            "description": "Quick search cursor",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Drive Popup",
+        "properties": {
+          "vscommander.colors.driveBody": {
+            "type": "object",
+            "default": {},
+            "description": "Drive popup body",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.driveLabel": {
+            "type": "object",
+            "default": {},
+            "description": "Drive popup section labels",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.driveText": {
+            "type": "object",
+            "default": {},
+            "description": "Drive popup text entries",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.driveNumber": {
+            "type": "object",
+            "default": {},
+            "description": "Drive popup drive numbers/hotkeys",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Dialogs",
+        "properties": {
+          "vscommander.colors.confirmBody": {
+            "type": "object",
+            "default": {},
+            "description": "Confirmation popup body",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.confirmButton": {
+            "type": "object",
+            "default": {},
+            "description": "Confirmation popup buttons",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.dialogBody": {
+            "type": "object",
+            "default": {},
+            "description": "Dialog body background",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.dialogInput": {
+            "type": "object",
+            "default": {},
+            "description": "Dialog input fields",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.dialogInputCursor": {
+            "type": "object",
+            "default": {},
+            "description": "Dialog input field cursor",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.dialogLabel": {
+            "type": "object",
+            "default": {},
+            "description": "Dialog labels",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.dialogButton": {
+            "type": "object",
+            "default": {},
+            "description": "Dialog buttons",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.dialogDropdown": {
+            "type": "object",
+            "default": {},
+            "description": "Dialog dropdown controls",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.dialogHotkey": {
+            "type": "object",
+            "default": {},
+            "description": "Dialog hotkey highlights",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Menu",
+        "properties": {
+          "vscommander.colors.menuBar": {
+            "type": "object",
+            "default": {},
+            "description": "Menu bar items",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.menuBarHotkey": {
+            "type": "object",
+            "default": {},
+            "description": "Menu bar hotkey highlights",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.menuItem": {
+            "type": "object",
+            "default": {},
+            "description": "Menu dropdown items",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.menuItemHotkey": {
+            "type": "object",
+            "default": {},
+            "description": "Menu item hotkey highlights",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.menuItemDisabled": {
+            "type": "object",
+            "default": {},
+            "description": "Disabled menu items",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          },
+          "vscommander.colors.menuBorder": {
+            "type": "object",
+            "default": {},
+            "description": "Menu dropdown borders",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      {
+        "title": "Colors: Help",
+        "properties": {
+          "vscommander.colors.helpLink": {
+            "type": "object",
+            "default": {},
+            "description": "Help topic links (idle and selected/cursor)",
+            "properties": {
+              "fg": {
+                "type": "string"
+              },
+              "bg": {
+                "type": "string"
+              },
+              "bold": {
+                "type": "boolean"
+              },
+              "selectedFg": {
+                "type": "string"
+              },
+              "selectedBg": {
+                "type": "string"
+              },
+              "selectedBold": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "terminal.integrated.commandsToSkipShell": [
+        "vscommander.toggle",
+        "-workbench.action.terminal.findNext"
+      ],
+      "terminal.integrated.minimumContrastRatio": 1
+    }
+  },
+  "scripts": {
+    "postinstall": "node scripts/fix-pty-permissions.js",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "bundle": "node esbuild.js --production",
+    "bundle:watch": "node esbuild.js --watch",
+    "typecheck": "tsc -p ./ --noEmit",
+    "package": "npm run bundle && vsce package"
+  },
+  "dependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/tar": "^6.1.13",
+    "7z-wasm": "^1.2.0",
+    "adm-zip": "^0.5.16",
+    "koffi": "^2.9.0",
+    "node-pty": "^1.0.0",
+    "node-unrar-js": "^2.0.2",
+    "tar": "^7.5.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "esbuild": "^0.27.3",
+    "typescript": "^5.3.0"
+  }
+}

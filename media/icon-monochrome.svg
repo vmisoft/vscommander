@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+  <!-- Outer frame -->
+  <rect x="1.5" y="1.5" width="21" height="19" rx="2" stroke-width="1.5"/>
+  <!-- Panel divider -->
+  <line x1="12" y1="3" x2="12" y2="17" stroke-width="1.2"/>
+  <!-- Left panel header bar -->
+  <rect x="3" y="3.5" width="7.5" height="2" rx="0.5" fill="currentColor" stroke="none"/>
+  <!-- Right panel header bar -->
+  <rect x="13.5" y="3.5" width="7.5" height="2" rx="0.5" fill="currentColor" stroke="none" opacity="0.4"/>
+  <!-- Left panel file entries -->
+  <line x1="3.5" y1="8" x2="8" y2="8" stroke-width="1" stroke-linecap="round"/>
+  <line x1="3.5" y1="10.5" x2="9.5" y2="10.5" stroke-width="1" stroke-linecap="round"/>
+  <line x1="3.5" y1="13" x2="7" y2="13" stroke-width="1" stroke-linecap="round"/>
+  <line x1="3.5" y1="15.5" x2="10" y2="15.5" stroke-width="1" stroke-linecap="round"/>
+  <!-- Right panel file entries -->
+  <line x1="14" y1="8" x2="19.5" y2="8" stroke-width="1" stroke-linecap="round"/>
+  <line x1="14" y1="10.5" x2="17.5" y2="10.5" stroke-width="1" stroke-linecap="round"/>
+  <line x1="14" y1="13" x2="20" y2="13" stroke-width="1" stroke-linecap="round"/>
+  <line x1="14" y1="15.5" x2="18" y2="15.5" stroke-width="1" stroke-linecap="round"/>
+  <!-- Bottom function key bar -->
+  <line x1="1.5" y1="17.5" x2="22.5" y2="17.5" stroke-width="1.2"/>
+  <rect x="3" y="18.5" width="3.5" height="1.8" rx="0.5" fill="currentColor" stroke="none"/>
+  <rect x="7.8" y="18.5" width="3.5" height="1.8" rx="0.5" fill="currentColor" stroke="none"/>
+  <rect x="12.6" y="18.5" width="3.5" height="1.8" rx="0.5" fill="currentColor" stroke="none"/>
+  <rect x="17.4" y="18.5" width="3.5" height="1.8" rx="0.5" fill="currentColor" stroke="none"/>
+</svg>

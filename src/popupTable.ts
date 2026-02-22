@@ -206,15 +206,20 @@ export class PopupTable {
             col += 1;
         }
 
-        const maxLabelLen = Math.max(0, primaryWidth - 1 - tableRow.detail.length);
+        let detail = tableRow.detail;
+        if (tableRow.label.length + 1 + detail.length > primaryWidth && detail.length > 0) {
+            const availForDetail = Math.max(0, primaryWidth - Math.min(tableRow.label.length, primaryWidth) - 1);
+            detail = PopupTable.truncateMiddle(detail, availForDetail);
+        }
+        const maxLabelLen = Math.max(0, primaryWidth - 1 - detail.length);
         const labelText = PopupTable.truncateMiddle(tableRow.label, maxLabelLen);
         fb.write(row, col, labelText, labelStyle);
         col += labelText.length;
 
-        fb.write(row, col, ' ' + tableRow.detail, textStyle);
-        col += 1 + tableRow.detail.length;
+        fb.write(row, col, ' ' + detail, textStyle);
+        col += 1 + detail.length;
 
-        const used = 1 + pfx + labelText.length + 1 + tableRow.detail.length;
+        const used = 1 + pfx + labelText.length + 1 + detail.length;
         const target = 1 + pfx + primaryWidth;
         if (used < target) {
             fb.write(row, col, ' '.repeat(target - used), textStyle);

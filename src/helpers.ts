@@ -164,3 +164,45 @@ export function dimStyle(s: TextStyle): TextStyle {
     }
     return { fg: dimHex(s.fg), bg: dimHex(s.bg), bold: false };
 }
+
+export function describeFileError(err: Error): { title: string; message: string } {
+    const code = (err as NodeJS.ErrnoException).code;
+    switch (code) {
+        case 'EACCES':
+        case 'EPERM':
+            return { title: 'Access denied', message: 'Permission denied.' };
+        case 'ENOENT':
+            return { title: 'Not found', message: 'File or directory not found.' };
+        case 'EEXIST':
+            return { title: 'Already exists', message: 'Already exists.' };
+        case 'ENOSPC':
+            return { title: 'Disk full', message: 'No space left on device.' };
+        case 'EROFS':
+            return { title: 'Read-only', message: 'Read-only file system.' };
+        case 'EBUSY':
+            return { title: 'File busy', message: 'Resource is busy or locked.' };
+        case 'ENOTEMPTY':
+            return { title: 'Not empty', message: 'Directory is not empty.' };
+        case 'ENOTDIR':
+            return { title: 'Error', message: 'Not a directory.' };
+        case 'EISDIR':
+            return { title: 'Error', message: 'Is a directory.' };
+        case 'EIO':
+            return { title: 'I/O error', message: 'Input/output error.' };
+        case 'ELOOP':
+            return { title: 'Error', message: 'Too many levels of symbolic links.' };
+        case 'ENAMETOOLONG':
+            return { title: 'Error', message: 'File name is too long.' };
+        case 'EMFILE':
+        case 'ENFILE':
+            return { title: 'Error', message: 'Too many open files.' };
+        case 'EDQUOT':
+            return { title: 'Disk quota', message: 'Disk quota exceeded.' };
+        case 'ETXTBSY':
+            return { title: 'File busy', message: 'Text file is busy.' };
+        case 'EXDEV':
+            return { title: 'Error', message: 'Cross-device link not permitted.' };
+        default:
+            return { title: 'Error', message: err.message };
+    }
+}

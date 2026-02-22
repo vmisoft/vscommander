@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { Panel } from './panel';
 import { CopyMoveResult } from './copyMovePopup';
 import { copyMoveOne, scanFiles, CopyErrorAction, CopyActionError, CopySpeedTracker, ByteProgressCallback, SymlinkPolicy, SymlinkAskCallback, OverwriteResult } from './fileOps';
+import { describeFileError } from './helpers';
 import { OverwriteChoice, OverwriteInfo, OverwritePopupResult } from './overwritePopup';
 
 export interface CopyMoveHost {
@@ -216,10 +217,11 @@ export class CopyMoveController {
         const onError = async (src: string, _dst: string, error: Error): Promise<CopyErrorAction> => {
             return new Promise<CopyErrorAction>((resolve) => {
                 this.copyErrorResolve = resolve;
+                const info = describeFileError(error);
                 panel.confirmPopup.openWith({
-                    title: 'Error',
+                    title: info.title,
                     bodyLines: [
-                        error.message,
+                        info.message,
                         src,
                     ],
                     buttons: ['Retry', 'Skip', 'Navigate', 'Cancel'],

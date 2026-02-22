@@ -1,11 +1,12 @@
 import * as path from 'path';
 import * as fs from 'fs';
 
-export function makeDirectories(
+export async function makeDirectories(
     cwd: string, dirName: string,
     linkType: 'none' | 'symbolic' | 'junction',
     linkTarget: string, multipleNames: boolean,
-): string | undefined {
+    onError?: MkdirErrorCallback,
+): Promise<string | undefined> {
     const names = multipleNames
         ? dirName.split(';').map(n => n.trim()).filter(n => n.length > 0)
         : [dirName.trim()];
@@ -13,17 +14,25 @@ export function makeDirectories(
     for (const name of names) {
         if (!name) continue;
         const fullPath = path.join(cwd, name);
-        try {
-            if (linkType === 'none') {
-                fs.mkdirSync(fullPath, { recursive: true });
-            } else {
-                const resolvedTarget = path.resolve(cwd, linkTarget);
-                const type = linkType === 'junction' ? 'junction' : 'dir';
-                fs.symlinkSync(resolvedTarget, fullPath, type);
+        for (;;) {
+            try {
+                if (linkType === 'none') {
+                    fs.mkdirSync(fullPath, { recursive: true });
+                } else {
+                    const resolvedTarget = path.resolve(cwd, linkTarget);
+                    const type = linkType === 'junction' ? 'junction' : 'dir';
+                    fs.symlinkSync(resolvedTarget, fullPath, type);
+                }
+                lastName = name;
+                break;
+            } catch (e) {
+                if (!onError) break;
+                const err = e instanceof Error ? e : new Error(String(e));
+                const action = await onError(fullPath, err);
+                if (action === 'retry') continue;
+                if (action === 'skip') break;
+                throw 'mkdir_cancelled';
             }
-            lastName = name;
-        } catch {
-            // ignore per-name errors
         }
     }
     return lastName;
@@ -33,6 +42,11 @@ export type FileProgressCallback = (src: string, dst: string) => Promise<void>;
 export type ByteProgressCallback = (bytesCopied: number, bytesTotal: number) => Promise<void>;
 export type CopyErrorAction = 'retry' | 'skip' | 'cancel' | 'navigate';
 export type CopyErrorCallback = (src: string, dst: string, error: Error) => Promise<CopyErrorAction>;
+
+export type DeleteErrorAction = 'retry' | 'skip' | 'cancel';
+export type DeleteErrorCallback = (filePath: string, error: Error) => Promise<DeleteErrorAction>;
+export type MkdirErrorAction = 'retry' | 'skip' | 'cancel';
+export type MkdirErrorCallback = (dirPath: string, error: Error) => Promise<MkdirErrorAction>;
 
 export type OverwriteAction = 'overwrite' | 'skip' | 'rename' | 'append' | 'cancel';
 export interface OverwriteResult {
@@ -716,19 +730,58 @@ export type DeleteProgressCallback = (
 export async function deleteRecursive(
     filePath: string,
     onProgress?: DeleteProgressCallback,
+    onError?: DeleteErrorCallback,
 ): Promise<void> {
     const result = { files: 0, dirs: 0 };
-    const lstat = await fs.promises.lstat(filePath);
+
+    let lstat: fs.Stats;
+    for (;;) {
+        try {
+            lstat = await fs.promises.lstat(filePath);
+            break;
+        } catch (e) {
+            if (!onError) throw e;
+            const err = e instanceof Error ? e : new Error(String(e));
+            const action = await onError(filePath, err);
+            if (action === 'retry') continue;
+            if (action === 'skip') return;
+            throw 'delete_cancelled';
+        }
+    }
 
     if (lstat.isDirectory() && !lstat.isSymbolicLink()) {
-        await deleteContentsRecursive(filePath, result, onProgress);
+        await deleteContentsRecursive(filePath, result, onProgress, onError);
         if (onProgress) await onProgress(filePath, result.files, result.dirs);
-        await fs.promises.rmdir(filePath);
-        result.dirs++;
+        for (;;) {
+            try {
+                await fs.promises.rmdir(filePath);
+                result.dirs++;
+                break;
+            } catch (e) {
+                if (!onError) throw e;
+                const err = e instanceof Error ? e : new Error(String(e));
+                const action = await onError(filePath, err);
+                if (action === 'retry') continue;
+                if (action === 'skip') return;
+                throw 'delete_cancelled';
+            }
+        }
     } else {
         if (onProgress) await onProgress(filePath, result.files, result.dirs);
-        await fs.promises.unlink(filePath);
-        result.files++;
+        for (;;) {
+            try {
+                await fs.promises.unlink(filePath);
+                result.files++;
+                break;
+            } catch (e) {
+                if (!onError) throw e;
+                const err = e instanceof Error ? e : new Error(String(e));
+                const action = await onError(filePath, err);
+                if (action === 'retry') continue;
+                if (action === 'skip') return;
+                throw 'delete_cancelled';
+            }
+        }
     }
 }
 
@@ -736,25 +789,58 @@ async function deleteContentsRecursive(
     dirPath: string,
     result: { files: number; dirs: number },
     onProgress?: DeleteProgressCallback,
+    onError?: DeleteErrorCallback,
 ): Promise<void> {
     let entries: fs.Dirent[];
-    try {
-        entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-    } catch {
-        return;
+    for (;;) {
+        try {
+            entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+            break;
+        } catch (e) {
+            if (!onError) return;
+            const err = e instanceof Error ? e : new Error(String(e));
+            const action = await onError(dirPath, err);
+            if (action === 'retry') continue;
+            if (action === 'skip') return;
+            throw 'delete_cancelled';
+        }
     }
 
     for (const entry of entries) {
         const fullPath = path.join(dirPath, entry.name);
         if (entry.isDirectory() && !entry.isSymbolicLink()) {
-            await deleteContentsRecursive(fullPath, result, onProgress);
+            await deleteContentsRecursive(fullPath, result, onProgress, onError);
             if (onProgress) await onProgress(fullPath, result.files, result.dirs);
-            try { await fs.promises.rmdir(fullPath); } catch { /* may fail */ }
-            result.dirs++;
+            for (;;) {
+                try {
+                    await fs.promises.rmdir(fullPath);
+                    result.dirs++;
+                    break;
+                } catch (e) {
+                    if (!onError) { result.dirs++; break; }
+                    const err = e instanceof Error ? e : new Error(String(e));
+                    const action = await onError(fullPath, err);
+                    if (action === 'retry') continue;
+                    if (action === 'skip') break;
+                    throw 'delete_cancelled';
+                }
+            }
         } else {
             if (onProgress) await onProgress(fullPath, result.files, result.dirs);
-            try { await fs.promises.unlink(fullPath); } catch { /* may fail */ }
-            result.files++;
+            for (;;) {
+                try {
+                    await fs.promises.unlink(fullPath);
+                    result.files++;
+                    break;
+                } catch (e) {
+                    if (!onError) { result.files++; break; }
+                    const err = e instanceof Error ? e : new Error(String(e));
+                    const action = await onError(fullPath, err);
+                    if (action === 'retry') continue;
+                    if (action === 'skip') break;
+                    throw 'delete_cancelled';
+                }
+            }
         }
     }
 }

@@ -11,7 +11,8 @@ import { Panel } from './panel';
 import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings, resolveTheme, ThemeName, ColorOverride, applyColorOverrides, THEME_KEYS } from './settings';
 import { DirectoryInfoProvider } from './directoryInfo';
 import { BlinkTimer, PollTimer } from './timerManager';
-import { makeDirectories, deleteRecursive } from './fileOps';
+import { makeDirectories, deleteRecursive, DeleteErrorAction, DeleteErrorCallback, MkdirErrorAction, MkdirErrorCallback } from './fileOps';
+import { describeFileError } from './helpers';
 import { ShellRouter } from './shellRouter';
 import { QuickViewController, QuickViewHost } from './quickView';
 import { CopyMoveController } from './copyMoveController';
@@ -142,6 +143,8 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private configListener: vscode.Disposable | undefined;
     private suppressConfigReload = false;
     private extensionPath: string;
+    private deleteErrorResolve: ((action: DeleteErrorAction) => void) | null = null;
+    private mkdirErrorResolve: ((action: MkdirErrorAction) => void) | null = null;
 
     constructor(cwd: string, extensionPath: string) {
         this.cwd = cwd;
@@ -519,11 +522,31 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                         this.pendingChdir = result.chdir;
                     }
                     break;
+                case 'openPrivacySettings':
+                    vscode.env.openExternal(vscode.Uri.parse(
+                        'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders'
+                    ));
+                    break;
                 case 'none':
                     break;
             }
+            if (result.data && result.action !== 'redraw' && result.action !== 'close'
+                && result.action !== 'interceptF1Changed' && result.action !== 'quickView'
+                && result.action !== 'input' && result.action !== 'executeCommand') {
+                this.writeEmitter.fire(result.data);
+            }
             this.copyMoveController.handleErrorDismiss(this.panel.confirmPopup.active);
             this.copyMoveController.handleOverwriteDismiss(this.panel.overwritePopup.active);
+            if (this.deleteErrorResolve && !this.panel.confirmPopup.active) {
+                const resolve = this.deleteErrorResolve;
+                this.deleteErrorResolve = null;
+                resolve('cancel');
+            }
+            if (this.mkdirErrorResolve && !this.panel.confirmPopup.active) {
+                const resolve = this.mkdirErrorResolve;
+                this.mkdirErrorResolve = null;
+                resolve('cancel');
+            }
             if (this.panel.isSearchActive) {
                 this.blinkTimer.restart(
                     () => this.panel!.resetSearchBlink(),
@@ -1041,25 +1064,74 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         this.panel.deleteProgressPopup.openWith(mode, filePath);
         this.writeEmitter.fire(this.panel.redraw());
 
+        const showDeleteError = (errorFilePath: string, error: Error): Promise<DeleteErrorAction> => {
+            return new Promise<DeleteErrorAction>((resolve) => {
+                if (!this.panel) { resolve('cancel'); return; }
+                this.deleteErrorResolve = resolve;
+                const info = describeFileError(error);
+                const code = (error as NodeJS.ErrnoException).code;
+                const isMacPrivacy = os.platform() === 'darwin' && (code === 'EPERM' || code === 'EACCES');
+                const buttons = isMacPrivacy
+                    ? ['Manage privacy', 'Retry', 'Skip', 'Cancel']
+                    : ['Retry', 'Skip', 'Cancel'];
+                this.panel.confirmPopup.openWith({
+                    title: info.title,
+                    bodyLines: [info.message, errorFilePath],
+                    buttons,
+                    warning: true,
+                    onConfirm: (btnIdx) => {
+                        this.deleteErrorResolve = null;
+                        if (isMacPrivacy) {
+                            if (btnIdx === 0) {
+                                vscode.env.openExternal(vscode.Uri.parse(
+                                    'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders'
+                                ));
+                                resolve('retry');
+                            } else if (btnIdx === 1) resolve('retry');
+                            else if (btnIdx === 2) resolve('skip');
+                            else resolve('cancel');
+                        } else {
+                            if (btnIdx === 0) resolve('retry');
+                            else if (btnIdx === 1) resolve('skip');
+                            else resolve('cancel');
+                        }
+                    },
+                });
+                this.writeEmitter.fire(this.panel.redraw());
+            });
+        };
+
         if (toTrash) {
-            try {
-                await vscode.workspace.fs.delete(vscode.Uri.file(filePath), { recursive: true, useTrash: true });
-            } catch { /* ignore */ }
+            for (;;) {
+                try {
+                    await vscode.workspace.fs.delete(vscode.Uri.file(filePath), { recursive: true, useTrash: true });
+                    break;
+                } catch (e) {
+                    const err = e instanceof Error ? e : new Error(String(e));
+                    const action = await showDeleteError(filePath, err);
+                    if (action === 'retry') continue;
+                    break;
+                }
+            }
         } else {
             let lastRedraw = 0;
+            const onProgress = async (currentPath: string, files: number, dirs: number): Promise<void> => {
+                if (this.panel?.deleteProgressPopup.cancelled) {
+                    throw new Error('delete_cancelled');
+                }
+                this.panel?.deleteProgressPopup.updateProgress(currentPath, files, dirs);
+                const now = Date.now();
+                if (now - lastRedraw >= 50) {
+                    lastRedraw = now;
+                    this.writeEmitter.fire(this.panel!.redraw());
+                    await new Promise<void>(r => setTimeout(r, 0));
+                }
+            };
+            const onError: DeleteErrorCallback = async (errorFilePath, error) => {
+                return showDeleteError(errorFilePath, error);
+            };
             try {
-                await deleteRecursive(filePath, async (currentPath, files, dirs) => {
-                    if (this.panel?.deleteProgressPopup.cancelled) {
-                        throw new Error('delete_cancelled');
-                    }
-                    this.panel?.deleteProgressPopup.updateProgress(currentPath, files, dirs);
-                    const now = Date.now();
-                    if (now - lastRedraw >= 50) {
-                        lastRedraw = now;
-                        this.writeEmitter.fire(this.panel!.redraw());
-                        await new Promise<void>(r => setTimeout(r, 0));
-                    }
-                });
+                await deleteRecursive(filePath, onProgress, onError);
             } catch {
                 // cancelled or error — stop and refresh
             }
@@ -1069,8 +1141,50 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         this.refreshPanels();
     }
 
-    private makeDirectory(cwd: string, dirName: string, linkType: 'none' | 'symbolic' | 'junction', linkTarget: string, multipleNames: boolean): void {
-        const lastName = makeDirectories(cwd, dirName, linkType, linkTarget, multipleNames);
+    private async makeDirectory(cwd: string, dirName: string, linkType: 'none' | 'symbolic' | 'junction', linkTarget: string, multipleNames: boolean): Promise<void> {
+        const onError: MkdirErrorCallback = async (dirPath, error) => {
+            return new Promise<MkdirErrorAction>((resolve) => {
+                if (!this.panel) { resolve('cancel'); return; }
+                this.mkdirErrorResolve = resolve;
+                const info = describeFileError(error);
+                const code = (error as NodeJS.ErrnoException).code;
+                const isMacPrivacy = os.platform() === 'darwin' && (code === 'EPERM' || code === 'EACCES');
+                const buttons = isMacPrivacy
+                    ? ['Manage privacy', 'Retry', 'Skip', 'Cancel']
+                    : ['Retry', 'Skip', 'Cancel'];
+                this.panel.confirmPopup.openWith({
+                    title: info.title,
+                    bodyLines: [info.message, dirPath],
+                    buttons,
+                    warning: true,
+                    onConfirm: (btnIdx) => {
+                        this.mkdirErrorResolve = null;
+                        if (isMacPrivacy) {
+                            if (btnIdx === 0) {
+                                vscode.env.openExternal(vscode.Uri.parse(
+                                    'x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders'
+                                ));
+                                resolve('retry');
+                            } else if (btnIdx === 1) resolve('retry');
+                            else if (btnIdx === 2) resolve('skip');
+                            else resolve('cancel');
+                        } else {
+                            if (btnIdx === 0) resolve('retry');
+                            else if (btnIdx === 1) resolve('skip');
+                            else resolve('cancel');
+                        }
+                    },
+                });
+                this.writeEmitter.fire(this.panel.redraw());
+            });
+        };
+
+        let lastName: string | undefined;
+        try {
+            lastName = await makeDirectories(cwd, dirName, linkType, linkTarget, multipleNames, onError);
+        } catch {
+            // mkdir_cancelled — stop and refresh
+        }
         this.refreshPanels();
         if (lastName && this.panel) {
             const pane = this.panel.activePaneObj;
@@ -1186,12 +1300,14 @@ export function activate(context: vscode.ExtensionContext) {
             if (t === terminal) {
                 listener.dispose();
                 vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
+                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
             }
         });
         // Fallback if the event already fired before the listener was set up
         if (vscode.window.activeTerminal === terminal) {
             listener.dispose();
             vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
+            vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
         }
     });
 

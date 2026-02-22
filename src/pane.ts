@@ -14,9 +14,14 @@ import { getStreamInfo } from './ntfsStreams';
 import { loadDescriptions } from './descriptions';
 import { ArchiveHandle, filterArchiveDir } from './archiveFs';
 
+export interface ReadDirError {
+    code: string;
+    message: string;
+}
+
 export class Pane {
     cwd: string;
-    entries: DirEntry[];
+    entries!: DirEntry[];
     cursor = 0;
     scroll = 0;
     sortMode: SortMode = 'name';
@@ -28,6 +33,7 @@ export class Pane {
     archiveHandle: ArchiveHandle | null = null;
     archiveDir = '';
     isVirtual = false;
+    readError: ReadDirError | null = null;
 
     constructor(cwd: string, settings: PanelSettings) {
         this.cwd = cwd;
@@ -35,7 +41,13 @@ export class Pane {
         this.sortMode = settings.sortMode as SortMode;
         this.sortReversed = settings.sortReversed;
         this.sortDirsFirst = settings.sortDirsFirst;
-        this.entries = Pane.readDir(cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        this.loadDir(settings);
+    }
+
+    private loadDir(settings: PanelSettings): void {
+        const result = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        this.entries = result.entries;
+        this.readError = result.error ?? null;
     }
 
     getState(): PaneState {
@@ -167,14 +179,21 @@ export class Pane {
             this.cursor = 0;
             this.scroll = 0;
         }
-        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        this.loadDir(settings);
         this.cursor = Math.min(this.cursor, Math.max(0, this.entries.length - 1));
     }
 
     navigateInto(entry: DirEntry, settings: PanelSettings): void {
         this.selectedToTop = false;
-        this.cwd = path.join(this.cwd, entry.name);
-        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        const targetCwd = path.join(this.cwd, entry.name);
+        const result = Pane.readDir(targetCwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        if (result.error) {
+            this.readError = result.error;
+            return;
+        }
+        this.cwd = targetCwd;
+        this.entries = result.entries;
+        this.readError = null;
         this.cursor = 0;
         this.scroll = 0;
         this.selected.clear();
@@ -184,7 +203,7 @@ export class Pane {
         this.selectedToTop = false;
         const oldDirName = path.basename(this.cwd);
         this.cwd = path.dirname(this.cwd);
-        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        this.loadDir(settings);
         const idx = this.entries.findIndex(e => e.name === oldDirName);
         this.cursor = idx >= 0 ? idx : 0;
         this.ensureCursorVisible(pageCapacity);
@@ -238,7 +257,7 @@ export class Pane {
         this.archiveHandle!.close();
         this.archiveHandle = null;
         this.archiveDir = '';
-        this.entries = Pane.readDir(this.cwd, settings, this.sortMode, this.sortReversed, this.sortDirsFirst);
+        this.loadDir(settings);
         const idx = this.entries.findIndex(e => e.name === archiveName);
         this.cursor = idx >= 0 ? idx : 0;
         this.selected.clear();
@@ -268,7 +287,7 @@ export class Pane {
         return out.join('');
     }
 
-    static readDir(dirPath: string, settings: PanelSettings, sortMode: SortMode = 'name', sortReversed = false, sortDirsFirst = true): DirEntry[] {
+    static readDir(dirPath: string, settings: PanelSettings, sortMode: SortMode = 'name', sortReversed = false, sortDirsFirst = true): { entries: DirEntry[]; error?: ReadDirError } {
         try {
             const items = fs.readdirSync(dirPath, { withFileTypes: true });
             const entries: DirEntry[] = [];
@@ -343,13 +362,20 @@ export class Pane {
                 }
             }
             Pane.sortEntries(entries, sortMode, sortDirsFirst, sortReversed);
-            return entries;
-        } catch {
+            return { entries };
+        } catch (err: unknown) {
             const fallback: DirEntry[] = [];
             if (path.dirname(dirPath) !== dirPath) {
                 fallback.push({ name: '..', isDir: true, isSymlink: false, linkTarget: '', size: 0, mtime: new Date(0) });
             }
-            return fallback;
+            const errObj = err instanceof Error ? err as NodeJS.ErrnoException : null;
+            return {
+                entries: fallback,
+                error: {
+                    code: errObj?.code ?? 'UNKNOWN',
+                    message: errObj?.message ?? String(err),
+                },
+            };
         }
     }
 

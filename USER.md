@@ -122,9 +122,10 @@ Press `Alt` + any letter or number to open a search popup. The popup appears nea
 Press `Alt+F1` to open the Change Drive popup for the left pane, or `Alt+F2` for the right pane. The popup lists available drives or mounted filesystems depending on your platform:
 
 - **Windows**: Lists disk drives sorted alphabetically (C:, D:, etc.) with type (fixed, removable, network, cdrom), total size, and free space
-- **Linux / macOS / FreeBSD**: Lists mounted filesystems from `df`, filtering out virtual filesystems (tmpfs, proc, sysfs, etc.). The root filesystem `/` appears first, followed by `/mnt/*` mount points, then the rest alphabetically
+- **macOS**: Lists volumes from `/Volumes/` with their actual volume labels (e.g., "Macintosh HD", "exssd") plus total and free space. The root volume appears first, followed by other volumes alphabetically
+- **Linux / FreeBSD**: Lists mounted filesystems from `df`, filtering out virtual filesystems (tmpfs, proc, sysfs, etc.). The root filesystem `/` appears first, followed by `/mnt/*` mount points, then the rest alphabetically. Mount points with spaces in their names are supported
 
-Below the drives, a **Home directories** section lists well-known directories from your home directory (Desktop, Documents, Downloads, Movies, Music, Pictures, Public) -- only those that actually exist. This section is refreshed each time the popup is opened.
+Below the drives, a **Home directories** section lists the Home directory itself followed by well-known subdirectories (Desktop, Documents, Downloads, Movies, Music, Pictures, Public) -- only those that actually exist. This section is refreshed each time the popup is opened.
 
 If you have a workspace directory open in VS Code, it appears at the bottom of the list as a "VSCode Explorer" entry (showing the directory name on the right) for quick navigation. The VSCode Explorer entry always has the hotkey `0`.
 
@@ -604,6 +605,47 @@ Mouse tracking is enabled while the panel is visible and disabled when you switc
 | Left-click outside a popup | Closes the popup |
 | Scroll wheel | Moves cursor up/down by 3 entries; scrolls the Drive popup list when open |
 | Middle-click | Acts as Enter (open directory, open file, or execute command) |
+
+## File Operation Errors
+
+When a file operation fails, a popup appears with a human-readable error description and the affected path. The behavior depends on the operation:
+
+### Directory Navigation Errors
+
+When navigating into a directory that cannot be read, a popup appears explaining the error with an **OK** button.
+
+### Delete Errors (F8 / Shift+F8)
+
+When a file or directory cannot be deleted, an error popup appears with **Retry**, **Skip**, and **Cancel** buttons:
+
+- **Retry**: Attempt the operation again (useful after fixing permissions or closing a locked file)
+- **Skip**: Skip the failed item and continue deleting remaining files
+- **Cancel**: Abort the entire delete operation
+
+### Make Directory Errors (F7)
+
+When a directory cannot be created, an error popup appears with **Retry**, **Skip**, and **Cancel** buttons. When creating multiple directories (semicolon-separated), Skip moves to the next name.
+
+### Copy / Move Errors (F5 / F6)
+
+When a file fails to copy or move, an error popup appears with **Retry**, **Skip**, **Navigate**, and **Cancel** buttons. Navigate aborts the operation and positions the cursor on the problematic file.
+
+### macOS Privacy (TCC)
+
+On macOS, when the system denies access (e.g. Desktop, Documents, Downloads), error popups include an additional **Manage privacy** button that opens System Settings > Privacy & Security > Files and Folders, where you can grant VS Code access. After toggling the permission, press Retry or `Ctrl+R` to refresh.
+
+### Common Error Messages
+
+| Error | Meaning |
+|-------|---------|
+| Permission denied | File permissions prevent the operation |
+| File or directory not found | The path no longer exists |
+| Already exists | A file or directory with that name already exists |
+| No space left on device | The disk is full |
+| Read-only file system | The filesystem is mounted read-only |
+| Resource is busy or locked | Another process has the file open |
+| Directory is not empty | Cannot remove a non-empty directory |
+| Disk quota exceeded | Your disk quota has been reached |
 
 ## Supported Platforms
 

@@ -7,7 +7,7 @@ import {
 import { MouseEvent, parseMouseEvent } from './mouse';
 import { PanelSettings, TextStyle, matchesKeyBinding, resolveTheme } from './settings';
 import { Layout, PaneGeometry, SortMode } from './types';
-import { computeLayout } from './helpers';
+import { computeLayout, describeFileError } from './helpers';
 import { Pane } from './pane';
 import { Popup, PopupInputResult } from './popup';
 import { SearchPopup } from './searchPopup';
@@ -31,35 +31,36 @@ import { CommandLine } from './commandLine';
 import { isArchiveFile } from './archiveFs';
 
 export type PanelInputResult =
-    | { action: 'quit' }
-    | { action: 'close' }
+    | { action: 'quit'; data?: string }
+    | { action: 'close'; data?: string }
     | { action: 'redraw'; data: string; chdir?: string }
     | { action: 'input'; data: string; redraw: string }
     | { action: 'executeCommand'; data: string }
-    | { action: 'settingsChanged' }
-    | { action: 'openSettings' }
-    | { action: 'toggleDetach' }
-    | { action: 'openFile'; filePath: string }
-    | { action: 'viewFile'; filePath: string }
-    | { action: 'deleteFile'; filePath: string; toTrash: boolean }
-    | { action: 'mkdir'; cwd: string; dirName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean }
-    | { action: 'copyMove'; result: CopyMoveResult }
+    | { action: 'settingsChanged'; data?: string }
+    | { action: 'openSettings'; data?: string }
+    | { action: 'toggleDetach'; data?: string }
+    | { action: 'openFile'; filePath: string; data?: string }
+    | { action: 'viewFile'; filePath: string; data?: string }
+    | { action: 'deleteFile'; filePath: string; toTrash: boolean; data?: string }
+    | { action: 'mkdir'; cwd: string; dirName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean; data?: string }
+    | { action: 'copyMove'; result: CopyMoveResult; data?: string }
     | { action: 'quickView'; data: string; filePath: string; targetType: 'file' | 'dir'; side: 'left' | 'right' }
     | { action: 'quickViewClose'; data: string; chdir?: string }
-    | { action: 'changeTheme'; themeName: ThemeName }
-    | { action: 'saveSettings'; scope: 'user' | 'workspace' }
-    | { action: 'deleteSettings'; scope: 'user' | 'workspace' }
-    | { action: 'enterArchive'; filePath: string }
-    | { action: 'openArchiveFile'; archivePath: string; entryPath: string }
-    | { action: 'viewArchiveFile'; archivePath: string; entryPath: string }
-    | { action: 'extractFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string }
-    | { action: 'addToArchive'; sourcePaths: string[]; archiveDir: string }
-    | { action: 'deleteFromArchive'; entryPaths: string[] }
-    | { action: 'mkdirInArchive'; dirPath: string }
-    | { action: 'moveFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string }
-    | { action: 'moveToArchive'; sourcePaths: string[]; archiveDir: string }
+    | { action: 'changeTheme'; themeName: ThemeName; data?: string }
+    | { action: 'saveSettings'; scope: 'user' | 'workspace'; data?: string }
+    | { action: 'deleteSettings'; scope: 'user' | 'workspace'; data?: string }
+    | { action: 'enterArchive'; filePath: string; data?: string }
+    | { action: 'openArchiveFile'; archivePath: string; entryPath: string; data?: string }
+    | { action: 'viewArchiveFile'; archivePath: string; entryPath: string; data?: string }
+    | { action: 'extractFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string; data?: string }
+    | { action: 'addToArchive'; sourcePaths: string[]; archiveDir: string; data?: string }
+    | { action: 'deleteFromArchive'; entryPaths: string[]; data?: string }
+    | { action: 'mkdirInArchive'; dirPath: string; data?: string }
+    | { action: 'moveFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string; data?: string }
+    | { action: 'moveToArchive'; sourcePaths: string[]; archiveDir: string; data?: string }
     | { action: 'interceptF1Changed'; data: string; interceptF1: boolean }
-    | { action: 'none' };
+    | { action: 'openPrivacySettings'; data?: string }
+    | { action: 'none'; data?: string };
 
 export class Panel {
     visible = false;
@@ -132,6 +133,7 @@ export class Panel {
         this.visible = true;
         this.left.refresh(this.settings);
         this.right.refresh(this.settings);
+        this.showReadErrorPopup(this.activePaneObj);
         return enterAltScreen() + enableMouse() + this.render();
     }
 
@@ -624,6 +626,7 @@ export class Panel {
 
         if (matchesKeyBinding(data, 'Ctrl+R')) {
             pane.refresh(this.settings);
+            this.showReadErrorPopup(pane);
             return { action: 'redraw', data: this.render() };
         }
 
@@ -684,10 +687,12 @@ export class Panel {
             if (pane.isInArchive) {
                 if (!pane.navigateArchiveUp(this.settings, pageCapacity)) {
                     pane.exitArchive(this.settings);
+                    this.showReadErrorPopup(pane);
                 }
                 return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
             }
             pane.navigateUp(this.settings, pageCapacity);
+            this.showReadErrorPopup(pane);
             return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
         }
 
@@ -712,6 +717,7 @@ export class Panel {
                 } else {
                     pane.navigateInto(entry, this.settings);
                 }
+                this.showReadErrorPopup(pane);
                 return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
             }
             if (entry && !entry.isDir && isArchiveFile(entry.name)) {
@@ -1056,6 +1062,7 @@ export class Panel {
                 } else {
                     pane.navigateInto(entry, this.settings);
                 }
+                this.showReadErrorPopup(pane);
                 return { action: 'redraw', data: clearScreen() + this.render(), chdir: pane.cwd };
             }
             if (entry && !entry.isDir && isArchiveFile(entry.name)) {
@@ -1157,10 +1164,7 @@ export class Panel {
     private resolvePopupResult(result: PopupInputResult): PanelInputResult {
         if (result.action === 'close' && result.confirm && result.command) {
             const cmd = result.command as PanelInputResult;
-            if (cmd.action === 'redraw') {
-                return { ...cmd, data: this.render() };
-            }
-            return cmd;
+            return { ...cmd, data: this.render() };
         }
         return { action: 'redraw', data: this.render() };
     }
@@ -1266,6 +1270,7 @@ export class Panel {
             case 'reread': {
                 const pane = cmd.pane === 'left' ? this.left : this.right;
                 pane.refresh(this.settings);
+                this.showReadErrorPopup(pane);
                 return { action: 'redraw', data: this.render() };
             }
             case 'changeDrive': {
@@ -1487,7 +1492,10 @@ export class Panel {
                 }
                 pane.isVirtual = false;
                 pane.cwd = targetPath;
-                pane.entries = Pane.readDir(targetPath, this.settings);
+                const dirResult = Pane.readDir(targetPath, this.settings);
+                pane.entries = dirResult.entries;
+                pane.readError = dirResult.error ?? null;
+                this.showReadErrorPopup(pane);
             } else {
                 pane.isVirtual = true;
                 pane.cwd = selected.label;
@@ -1807,7 +1815,7 @@ export class Panel {
     private resolveCopyMoveResult(result: PopupInputResult): PanelInputResult {
         if (result.action === 'close' && result.confirm && result.command) {
             const cmd = result.command as PanelInputResult;
-            return cmd;
+            return { ...cmd, data: this.render() };
         }
         return { action: 'redraw', data: this.render() };
     }
@@ -2021,6 +2029,39 @@ export class Panel {
     redraw(): string {
         if (!this.visible) return '';
         return this.render();
+    }
+
+    private showReadErrorPopup(pane: Pane): void {
+        const err = pane.readError;
+        if (!err) return;
+        pane.readError = null;
+
+        if (os.platform() === 'darwin' && (err.code === 'EPERM' || err.code === 'EACCES')) {
+            this.confirmPopup.openWith({
+                title: 'Privacy',
+                bodyLines: [
+                    'macOS has denied access to this directory.',
+                    'Open Privacy settings to grant access?',
+                ],
+                buttons: ['Manage privacy', 'OK'],
+                onConfirm: (btnIdx) => {
+                    if (btnIdx === 0) {
+                        return { action: 'openPrivacySettings' };
+                    }
+                },
+            });
+            return;
+        }
+
+        const syntheticErr = new Error(err.message) as NodeJS.ErrnoException;
+        syntheticErr.code = err.code;
+        const info = describeFileError(syntheticErr);
+        this.confirmPopup.openWith({
+            title: info.title,
+            bodyLines: [info.message],
+            buttons: ['OK'],
+            onConfirm: () => {},
+        });
     }
 
     private openDeletePopup(pane: Pane, toTrash: boolean): PanelInputResult {

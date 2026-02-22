@@ -341,8 +341,16 @@ export class DrivePopup extends Popup {
 
     static discoverHomeDirs(): DriveEntry[] {
         const home = os.homedir();
-        const names = ['Desktop', 'Documents', 'Downloads', 'Movies', 'Music', 'Pictures', 'Public'];
         const entries: DriveEntry[] = [];
+        entries.push({
+            label: 'Home',
+            description: '',
+            totalSize: 0,
+            freeSpace: 0,
+            path: home,
+            group: 'home',
+        });
+        const names = ['Desktop', 'Documents', 'Downloads', 'Movies', 'Music', 'Pictures', 'Public'];
         for (const name of names) {
             const dirPath = path.join(home, name);
             try {
@@ -365,9 +373,8 @@ export class DrivePopup extends Popup {
     }
 
     static discoverDrives(): DriveEntry[] {
-        if (os.platform() === 'win32') {
-            return DrivePopup.discoverDrivesWindows();
-        }
+        if (os.platform() === 'win32') return DrivePopup.discoverDrivesWindows();
+        if (os.platform() === 'darwin') return DrivePopup.discoverDrivesDarwin();
         return DrivePopup.discoverDrivesPosix();
     }
 
@@ -432,6 +439,86 @@ export class DrivePopup extends Popup {
         return entries;
     }
 
+    static discoverDrivesDarwin(): DriveEntry[] {
+        try {
+            const dfOutput = execSync('df -k', { timeout: 5000, encoding: 'utf8' });
+            const dfLines = dfOutput.trim().split(/\r?\n/);
+
+            const reDarwin = /^\S+\s+(\d+)\s+\d+\s+(\d+)\s+\d+%\s+\d+\s+\d+\s+\d+%\s+(.+)$/;
+            const dfMap = new Map<string, { totalKb: number; availKb: number }>();
+
+            for (let i = 1; i < dfLines.length; i++) {
+                const m = reDarwin.exec(dfLines[i].trim());
+                if (!m) continue;
+                const mountPoint = m[3];
+                if (mountPoint === '/dev') continue;
+                if (mountPoint.startsWith('/System/')) continue;
+                if (mountPoint.startsWith('/private/')) continue;
+                dfMap.set(mountPoint, {
+                    totalKb: parseInt(m[1], 10) || 0,
+                    availKb: parseInt(m[2], 10) || 0,
+                });
+            }
+
+            const entries: DriveEntry[] = [];
+            const seen = new Set<string>();
+
+            let volumeEntries: fs.Dirent[] = [];
+            try {
+                volumeEntries = fs.readdirSync('/Volumes', { withFileTypes: true });
+            } catch {
+                // /Volumes not readable
+            }
+
+            for (const ent of volumeEntries) {
+                const volPath = path.join('/Volumes', ent.name);
+                let resolvedPath: string;
+                try {
+                    resolvedPath = fs.realpathSync(volPath);
+                } catch {
+                    resolvedPath = volPath;
+                }
+
+                const df = dfMap.get(resolvedPath) || dfMap.get(volPath);
+                if (!df) continue;
+                if (seen.has(resolvedPath)) continue;
+                seen.add(resolvedPath);
+
+                entries.push({
+                    label: ent.name,
+                    description: resolvedPath === '/' ? '/' : volPath,
+                    totalSize: df.totalKb * 1024,
+                    freeSpace: df.availKb * 1024,
+                    path: resolvedPath,
+                    group: 'drive',
+                });
+            }
+
+            for (const [mountPoint, df] of dfMap) {
+                if (seen.has(mountPoint)) continue;
+                seen.add(mountPoint);
+                entries.push({
+                    label: path.basename(mountPoint) || mountPoint,
+                    description: mountPoint,
+                    totalSize: df.totalKb * 1024,
+                    freeSpace: df.availKb * 1024,
+                    path: mountPoint,
+                    group: 'drive',
+                });
+            }
+
+            entries.sort((a, b) => {
+                const aRank = a.path === '/' ? 0 : 1;
+                const bRank = b.path === '/' ? 0 : 1;
+                if (aRank !== bRank) return aRank - bRank;
+                return a.label.localeCompare(b.label);
+            });
+            return entries;
+        } catch {
+            return [];
+        }
+    }
+
     static discoverDrivesPosix(): DriveEntry[] {
         try {
             const output = execSync('df -kT 2>/dev/null || df -k', {
@@ -442,29 +529,36 @@ export class DrivePopup extends Popup {
             if (lines.length < 2) return [];
 
             const header = lines[0];
-            const hasFsType = /\btype\b/i.test(header) || header.split(/\s+/).length >= 7;
+            const hasFsType = /\btype\b/i.test(header);
             const entries: DriveEntry[] = [];
             const seen = new Set<string>();
 
+            const reWithType = /^\S+\s+(\S+)\s+(\d+)\s+\d+\s+(\d+)\s+\d+%\s+(.+)$/;
+            const reNoType = /^\S+\s+(\d+)\s+\d+\s+(\d+)\s+\d+%\s+(.+)$/;
+
             for (let i = 1; i < lines.length; i++) {
-                const parts = lines[i].trim().split(/\s+/);
-                if (parts.length < 6) continue;
+                const line = lines[i].trim();
+                if (!line) continue;
 
                 let fsType: string;
                 let totalKb: number;
                 let availKb: number;
                 let mountPoint: string;
 
-                if (hasFsType && parts.length >= 7) {
-                    fsType = parts[1];
-                    totalKb = parseInt(parts[2], 10) || 0;
-                    availKb = parseInt(parts[4], 10) || 0;
-                    mountPoint = parts[6];
+                if (hasFsType) {
+                    const m = reWithType.exec(line);
+                    if (!m) continue;
+                    fsType = m[1];
+                    totalKb = parseInt(m[2], 10) || 0;
+                    availKb = parseInt(m[3], 10) || 0;
+                    mountPoint = m[4];
                 } else {
+                    const m = reNoType.exec(line);
+                    if (!m) continue;
                     fsType = '';
-                    totalKb = parseInt(parts[1], 10) || 0;
-                    availKb = parseInt(parts[3], 10) || 0;
-                    mountPoint = parts[5];
+                    totalKb = parseInt(m[1], 10) || 0;
+                    availKb = parseInt(m[2], 10) || 0;
+                    mountPoint = m[3];
                 }
 
                 if (VIRTUAL_FS_TYPES.has(fsType)) continue;

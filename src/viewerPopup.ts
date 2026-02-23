@@ -200,26 +200,38 @@ export class ViewerPopup {
         this.ensureMoreData(contentHeight);
     }
 
-    search(params: ViewerSearchParams, direction: 'forward' | 'backward'): void {
+    search(params: ViewerSearchParams, direction: 'forward' | 'backward'): boolean {
         this.lastSearch = params;
         if (params.hexSearch) {
-            this.searchHex(params, direction);
+            return this.searchHex(params, direction);
         } else {
-            this.searchText(params, direction);
+            return this.searchText(params, direction);
         }
     }
 
-    searchNext(): void {
-        if (this.lastSearch) this.search(this.lastSearch, 'forward');
+    searchNext(): boolean {
+        if (this.lastSearch) return this.search(this.lastSearch, 'forward');
+        return false;
     }
 
-    searchPrev(): void {
-        if (this.lastSearch) this.search(this.lastSearch, 'backward');
+    searchPrev(): boolean {
+        if (this.lastSearch) return this.search(this.lastSearch, 'backward');
+        return false;
+    }
+
+    get lastSearchText(): string {
+        return this.lastSearch?.text ?? '';
+    }
+
+    get lastSearchIsHex(): boolean {
+        return this.lastSearch?.hexSearch ?? false;
     }
 
     render(rows: number, cols: number, theme: Theme): string {
         const out: string[] = [];
         const contentHeight = rows - 2;
+        this.lastPageH = contentHeight;
+        this.lastCols = cols;
 
         out.push(hideCursor());
         out.push(this.renderTitleBar(rows, cols, theme, contentHeight));
@@ -484,6 +496,7 @@ export class ViewerPopup {
     }
 
     private lastPageH = 20;
+    private lastCols = 80;
     private lastPageHeight(): number {
         return this.lastPageH;
     }
@@ -700,9 +713,9 @@ export class ViewerPopup {
         }
     }
 
-    private searchText(params: ViewerSearchParams, direction: 'forward' | 'backward'): void {
+    private searchText(params: ViewerSearchParams, direction: 'forward' | 'backward'): boolean {
         const lines = this.fileLines;
-        if (lines.length === 0) return;
+        if (lines.length === 0) return false;
 
         let pattern: RegExp;
         try {
@@ -718,7 +731,7 @@ export class ViewerPopup {
                 pattern = new RegExp(escaped, flags);
             }
         } catch {
-            return;
+            return false;
         }
 
         const startLine = this.searchMatch ? this.searchMatch.line : this.scrollTop;
@@ -733,7 +746,7 @@ export class ViewerPopup {
                 if (m) {
                     this.searchMatch = { line: lineIdx, col: m.index, length: m[0].length };
                     this.scrollToMatch();
-                    return;
+                    return true;
                 }
             }
         } else {
@@ -755,23 +768,24 @@ export class ViewerPopup {
                 if (lastMatch) {
                     this.searchMatch = { line: lineIdx, col: lastMatch.index, length: lastMatch[0].length };
                     this.scrollToMatch();
-                    return;
+                    return true;
                 }
             }
         }
 
         this.searchMatch = null;
+        return false;
     }
 
-    private searchHex(params: ViewerSearchParams, direction: 'forward' | 'backward'): void {
-        if (!this.hexBytes || params.text.length === 0) return;
+    private searchHex(params: ViewerSearchParams, direction: 'forward' | 'backward'): boolean {
+        if (!this.hexBytes || params.text.length === 0) return false;
 
         const hexStr = params.text.replace(/\s+/g, '');
-        if (hexStr.length % 2 !== 0) return;
+        if (hexStr.length % 2 !== 0) return false;
         const needle = Buffer.alloc(hexStr.length / 2);
         for (let i = 0; i < needle.length; i++) {
             const byte = parseInt(hexStr.slice(i * 2, i * 2 + 2), 16);
-            if (isNaN(byte)) return;
+            if (isNaN(byte)) return false;
             needle[i] = byte;
         }
 
@@ -787,7 +801,7 @@ export class ViewerPopup {
                     const col = i % 16;
                     this.searchMatch = { line, col, length: needle.length };
                     this.scrollTop = Math.max(0, line - Math.floor(this.lastPageH / 4));
-                    return;
+                    return true;
                 }
             }
             for (let i = 0; i < startPos && i <= haystack.length - needle.length; i++) {
@@ -796,7 +810,7 @@ export class ViewerPopup {
                     const col = i % 16;
                     this.searchMatch = { line, col, length: needle.length };
                     this.scrollTop = Math.max(0, line - Math.floor(this.lastPageH / 4));
-                    return;
+                    return true;
                 }
             }
         } else {
@@ -809,7 +823,7 @@ export class ViewerPopup {
                     const col = i % 16;
                     this.searchMatch = { line, col, length: needle.length };
                     this.scrollTop = Math.max(0, line - Math.floor(this.lastPageH / 4));
-                    return;
+                    return true;
                 }
             }
             for (let i = haystack.length - needle.length; i > searchStart; i--) {
@@ -818,12 +832,13 @@ export class ViewerPopup {
                     const col = i % 16;
                     this.searchMatch = { line, col, length: needle.length };
                     this.scrollTop = Math.max(0, line - Math.floor(this.lastPageH / 4));
-                    return;
+                    return true;
                 }
             }
         }
 
         this.searchMatch = null;
+        return false;
     }
 
     private bufferMatch(haystack: Buffer, pos: number, needle: Buffer): boolean {
@@ -841,7 +856,7 @@ export class ViewerPopup {
 
         if (!this.hexMode && !this.wrapMode) {
             const col = this.searchMatch.col;
-            if (col < this.scrollLeft || col >= this.scrollLeft + this.lastPageH) {
+            if (col < this.scrollLeft || col >= this.scrollLeft + this.lastCols) {
                 this.scrollLeft = Math.max(0, col - 5);
             }
         }

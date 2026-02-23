@@ -366,6 +366,20 @@ export class Panel {
         return this.viewerSearchPopup.renderViewerSearchBlink(this.rows, this.cols, this.settings.theme);
     }
 
+    private showViewerSearchNotFound(): void {
+        const searchTerm = this.viewerPopup.lastSearchText;
+        const msg = this.viewerPopup.lastSearchIsHex
+            ? 'Could not find the bytes'
+            : 'Could not find the string';
+        this.confirmPopup.openWith({
+            title: 'Search',
+            bodyLines: [msg, searchTerm],
+            buttons: ['OK'],
+            warning: true,
+            onConfirm: () => undefined,
+        });
+    }
+
     renderSearchCursorBlink(): string {
         if (!this.visible || !this.searchPopup.active) return '';
         const layout = this.getLayout();
@@ -406,13 +420,24 @@ export class Panel {
             const vsResult = this.viewerSearchPopup.handleInput(data);
             if (vsResult.action === 'close' && vsResult.confirm && vsResult.command) {
                 const sr = vsResult.command as ViewerSearchResult;
-                this.viewerPopup.search({
+                const found = this.viewerPopup.search({
                     text: sr.text,
                     caseSensitive: sr.caseSensitive,
                     wholeWords: sr.wholeWords,
                     regex: sr.regex,
                     hexSearch: sr.hexSearch,
                 }, sr.direction);
+                if (!found) {
+                    this.showViewerSearchNotFound();
+                }
+            }
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (this.viewerPopup.active && this.confirmPopup.active) {
+            const cResult = this.confirmPopup.handleInput(data);
+            if (cResult.action === 'close') {
+                this.confirmPopup.close();
             }
             return { action: 'redraw', data: this.render() };
         }
@@ -430,10 +455,14 @@ export class Panel {
                     this.viewerSearchPopup.openSearch(this.cols);
                     return { action: 'redraw', data: this.render() };
                 case 'searchNext':
-                    this.viewerPopup.searchNext();
+                    if (!this.viewerPopup.searchNext()) {
+                        this.showViewerSearchNotFound();
+                    }
                     return { action: 'redraw', data: this.render() };
                 case 'searchPrev':
-                    this.viewerPopup.searchPrev();
+                    if (!this.viewerPopup.searchPrev()) {
+                        this.showViewerSearchNotFound();
+                    }
                     return { action: 'redraw', data: this.render() };
                 default:
                     return { action: 'redraw', data: this.render() };
@@ -1231,7 +1260,7 @@ export class Panel {
     }
 
     private handleMouse(mouse: MouseEvent, layout: Layout, activePaneGeo: PaneGeometry): PanelInputResult {
-        if (this.viewerPopup.active && !this.viewerSearchPopup.active) {
+        if (this.viewerPopup.active && !this.viewerSearchPopup.active && !this.confirmPopup.active) {
             if (mouse.isRelease || mouse.isMotion) return { action: 'none' };
             if (mouse.button === 64 || mouse.button === 65) {
                 const contentHeight = this.rows - 2;
@@ -2146,12 +2175,16 @@ export class Panel {
         const leftIsActive = this.activePane === 'left';
 
         if (this.viewerPopup.active) {
+            const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
             out.push(resetStyle());
             out.push(this.viewerPopup.render(this.rows, this.cols, t));
             if (this.viewerSearchPopup.active) {
-                const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
                 out.push(this.viewerSearchPopup.render(this.rows, this.cols, t));
                 out.push(this.viewerSearchPopup.renderShadow(cellAt));
+            }
+            if (this.confirmPopup.active) {
+                out.push(this.confirmPopup.render(this.rows, this.cols, t));
+                out.push(this.confirmPopup.renderShadow(cellAt));
             }
             return out.join('');
         }

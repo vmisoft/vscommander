@@ -141,6 +141,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private colorEditorBlinkTimer = new BlinkTimer(500);
     private overwriteBlinkTimer = new BlinkTimer(500);
     private userMenuBlinkTimer = new BlinkTimer(500);
+    private viewerSearchBlinkTimer = new BlinkTimer(500);
     private isDetached = false;
     private lastViewedFile: string | undefined;
     private qvRedrawTimer = new BlinkTimer(50);
@@ -277,6 +278,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         this.colorEditorBlinkTimer.stop();
         this.overwriteBlinkTimer.stop();
         this.userMenuBlinkTimer.stop();
+        this.viewerSearchBlinkTimer.stop();
         this.spinnerTimer.stop();
         this.qvRedrawTimer.stop();
         this.stopCommandPoll();
@@ -524,6 +526,15 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 },
                 s => this.writeEmitter.fire(s),
             );
+            this.viewerSearchBlinkTimer.sync(
+                () => !!this.panel?.isViewerSearchBlinkActive,
+                () => this.panel!.resetViewerSearchBlink(),
+                () => {
+                    if (this.panel?.isViewerSearchBlinkActive) return this.panel.renderViewerSearchCursorBlink();
+                    this.viewerSearchBlinkTimer.stop();
+                },
+                s => this.writeEmitter.fire(s),
+            );
             this.qvRedrawTimer.sync(
                 () => !!this.panel?.isQuickViewScanning,
                 () => {},
@@ -589,7 +600,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         if (!this.commandRunning || !this.shell) return;
         this.commandPollTimer.start(100, () => {
             if (!this.commandRunning || !this.shell) return false;
-            if (path.basename(this.shell.pty.process) === path.basename(this.shell.shellProcess)) {
+            if (this.shell.isShellForeground()) {
                 this.commandIdleCount++;
                 if (this.commandIdleCount >= 2) {
                     this.commandRunning = false;
@@ -660,7 +671,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 if (this.shell) this.shellRouter.refreshPrompt(this.shell);
                 vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
             } else {
-                const shellBusy = this.shell !== undefined && path.basename(this.shell.pty.process) !== path.basename(this.shell.shellProcess);
+                const shellBusy = this.shell !== undefined && !this.shell.isShellForeground();
                 if (shellBusy) {
                     this.panel.waitingMode = true;
                     this.panel.spinnerFrame = 0;

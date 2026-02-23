@@ -3,6 +3,7 @@
 import * as pty from 'node-pty';
 import * as os from 'os';
 import * as fs from 'fs';
+import * as path from 'path';
 import * as child_process from 'child_process';
 
 export interface ShellProxy {
@@ -13,6 +14,7 @@ export interface ShellProxy {
     onData(handler: (data: string) => void): void;
     onExit(handler: (exitCode: number) => void): void;
     getCwd(): string | undefined;
+    isShellForeground(): boolean;
     kill(): void;
 }
 
@@ -78,6 +80,29 @@ export function spawnShell(cols: number, rows: number, cwd?: string, windowsBack
                 // lsof not available (Windows)
             }
             return undefined;
+        },
+        isShellForeground(): boolean {
+            const procName = path.basename(ptyProcess.process);
+            const shellBase = path.basename(shell);
+            if (procName !== shellBase) {
+                return false;
+            }
+            const platform = os.platform();
+            if (platform === 'linux' || platform === 'darwin' || platform === 'win32') {
+                return true;
+            }
+            // FreeBSD, OpenBSD, etc: node-pty's pty.process always returns the
+            // shell name because /proc is not mounted. Fall back to checking
+            // whether the shell has child processes.
+            try {
+                child_process.execSync('pgrep -P ' + ptyProcess.pid, {
+                    timeout: 1000,
+                    stdio: 'ignore',
+                });
+                return false;
+            } catch {
+                return true;
+            }
         },
         kill() {
             ptyProcess.kill();

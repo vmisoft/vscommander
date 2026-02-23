@@ -21,6 +21,7 @@ Your shell session stays intact underneath.
   [Make Directory](MakeFolder.md)
   [Menus and Sorting](Menus.md)
   [Command Line](CmdLine.md)
+  [Internal Viewer](Viewer.md)
   [Quick View](QuickView.md)
   [Archive Navigation](Archives.md)
   [Settings and Themes](Settings.md)

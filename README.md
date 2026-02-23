@@ -30,6 +30,7 @@ The extension runs as a terminal overlay, you can toggle the file panel on and o
 - **Sorting**: Sort each pane independently by name, extension, size, date, or unsorted
 - **File operations**: F5 Copy, F6 Move/Rename with overwrite handling and progress display
 - **File selection**: Insert to toggle selection, batch operations on selected files
+- **Internal file viewer**: F3 opens a full-screen viewer with text/hex modes, word wrap, search (regex, hex, case-sensitive), encoding cycling (UTF-8/Latin-1/UTF-16LE), and lazy chunk loading for large files
 - **Function key bar**: F3 View, F4 Edit, F5 Copy, F6 Move, F7 Mkdir, F8 Delete, F9 Config, F10 Quit
 - **Mouse support**: click to select files, switch panes, activate popup buttons, scroll with the wheel
 - **Color themes**: classic Far Manager theme or auto-adapting VS Code theme; theme selection popup with live preview

@@ -67,7 +67,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `Enter` | Open selected directory / enter archive / open file in editor / execute command if text is entered |
 | `F1` | Open built-in help system |
 | `F2` | Open User Menu (configurable shell commands) |
-| `F3` | View -- highlight file in VS Code Explorer; open in system file manager if outside workspace |
+| `F3` | Open internal file viewer (text/hex modes, search, encoding) |
 | `F4` | Open selected file in VS Code editor |
 | `F5` | Copy selected file(s) to the other pane |
 | `F6` | Move or rename selected file(s) |
@@ -342,7 +342,7 @@ Navigation: `Up`/`Down` to move, `Enter` to select, `Escape` to cancel. Hotkey l
 
 | Item | Shortcut | Description |
 |------|----------|-------------|
-| View | F3 | Highlight file in VS Code Explorer |
+| View | F3 | Open internal file viewer |
 | Edit | F4 | Open file in VS Code editor |
 | Copy | F5 | Copy file (not yet implemented) |
 | Rename or move | F6 | Rename or move file (not yet implemented) |
@@ -384,13 +384,13 @@ Change the column count via the `vscommander.panelColumns` setting. Inner column
 
 ## Function Key Bar
 
-The bottom row shows function key labels styled after Far Manager. Unimplemented keys (Help, Menu, View) are shown in a greyed-out inactive style, customizable via the `fkeyLabelInactive` color setting. Labels update dynamically when key bindings are remapped (see [Key Binding Settings](#key-binding-settings)):
+The bottom row shows function key labels styled after Far Manager. Labels update dynamically when key bindings are remapped (see [Key Binding Settings](#key-binding-settings)):
 
 | Key | Label | Status |
 |-----|-------|--------|
 | F1 | Help | Opens built-in help system with topic navigation |
 | F2 | Menu | Inactive (not yet implemented) |
-| F3 | View | Inactive (not yet implemented) |
+| F3 | View | Open internal file viewer |
 | F4 | Edit | Opens selected file in VS Code editor |
 | F5 | Copy | Copies selected file(s) to the opposite pane with a target path dialog |
 | F6 | Move | Moves or renames selected file(s) with a target path dialog |
@@ -525,6 +525,50 @@ Exiting Quick View:
 
 While in Quick View mode, `Ctrl+P` (toggle pane), `Ctrl+Left`, and `Ctrl+Right` (resize) are disabled. `Ctrl+U` (swap panels) exits Quick View first, then swaps.
 
+## Internal File Viewer (F3)
+
+Press `F3` on a file to open the internal viewer. The viewer takes over the full terminal screen with a title bar at the top, file content in the middle, and a function key bar at the bottom.
+
+**Title bar** shows: filename, mode indicator (`t` for text, `h` for hex), encoding, file size, column position, and scroll percentage.
+
+**Display modes**:
+- **Text mode** (default): Displays file content with tab expansion (8 spaces). Use arrow keys and PgUp/PgDn to scroll. Overflow arrows (`<<` / `>>`) appear when content extends beyond the viewport.
+- **Hex mode** (`F4`): Shows file bytes in hexadecimal with 16 bytes per line -- address, hex groups, and ASCII representation. Binary files automatically open in hex mode.
+- **Wrap mode** (`F2`): Wraps long lines to fit the terminal width (text mode only).
+
+**Navigation**:
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Scroll one line |
+| `PgUp` / `PgDn` | Scroll one page |
+| `Ctrl+Home` | Jump to file start |
+| `Ctrl+End` | Jump to file end |
+| `Home` | Reset horizontal scroll to column 0 |
+| `End` | Scroll to end of longest visible line |
+| `Left` / `Right` | Horizontal scroll (text mode, no-wrap only) |
+| `Ctrl+Left` / `Ctrl+Right` | Horizontal scroll 20 characters |
+| Mouse wheel | Scroll up/down |
+
+**Actions**:
+
+| Key | Action |
+|-----|--------|
+| `F2` | Toggle wrap mode |
+| `F4` | Toggle hex mode |
+| `F7` | Open search dialog |
+| `Shift+F7` | Find next match |
+| `Alt+F7` | Find previous match |
+| `F8` | Cycle encoding (UTF-8 -> Latin-1 -> UTF-16LE -> UTF-8) |
+| `F6` | Open file in VS Code editor |
+| `F3` / `F10` / `Esc` | Close viewer |
+
+**Search** (`F7`): Opens a search dialog with options for case sensitivity, whole words, regular expressions, and hex search. Use the `Prev` and `Next` buttons (or `Shift+F7` / `Alt+F7`) to navigate between matches. Found matches are highlighted in the content area.
+
+**Encoding** (`F8`): Cycles through UTF-8, Latin-1, and UTF-16LE encodings. The file is re-read with the selected encoding. The current encoding is shown in the title bar and on the F8 key label.
+
+**Large files**: The viewer reads files in 256KB chunks, loading more data as you scroll. This keeps the viewer responsive even for very large files.
+
 ## Fullscreen / Detach
 
 Press `Alt+Enter` to detach the VSCommander terminal from the editor area into a separate fullscreen window. Press `Alt+Enter` again to exit fullscreen and reattach back to the editor area.
@@ -630,7 +674,7 @@ Every panel action can be remapped to a different key. Valid key names include `
 | Setting | Type | Default | Action |
 |---------|------|---------|--------|
 | `vscommander.keyHelp` | string | `F1` | Help (open help system) |
-| `vscommander.keyView` | string | `F3` | View (reveal file in Explorer) |
+| `vscommander.keyView` | string | `F3` | Open internal file viewer |
 | `vscommander.keyEdit` | string | `F4` | Edit (open file in editor) |
 | `vscommander.keyCopy` | string | `F5` | Copy (copy files) |
 | `vscommander.keyMove` | string | `F6` | Move/Rename (move or rename files) |

@@ -23,7 +23,7 @@ See [Settings and Themes](Settings.md).
   `Enter`    Open directory / archive / file / execute cmd
   `F1`       Help -- open this help system
   `F2`       User Menu -- configurable shell commands
-  `F3`       View -- highlight in VS Code Explorer
+  `F3`       View -- open internal file viewer
   `F4`       Edit -- open file in VS Code editor
   `F5`       Copy files to other pane
   `F6`       Move or rename files

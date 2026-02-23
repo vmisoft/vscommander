@@ -85,6 +85,11 @@ export interface Theme {
     selectedFile: RenderStyle;
     selectedDir: RenderStyle;
     symlink: RenderStyle;
+    viewerText: RenderStyle;
+    viewerStatus: RenderStyle;
+    viewerSelected: RenderStyle;
+    viewerArrows: RenderStyle;
+    viewerHex: RenderStyle;
 }
 
 const BLACK = '000000';
@@ -146,6 +151,11 @@ export const DEFAULT_THEME: Theme = {
     selectedFile: rs(s(BRIGHT_YELLOW, DARK_BLUE, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
     selectedDir: rs(s(BRIGHT_YELLOW, DARK_BLUE, true), s(BRIGHT_YELLOW, DARK_TEAL, true)),
     symlink: rs(s(BRIGHT_YELLOW, DARK_BLUE), s(BRIGHT_YELLOW, DARK_TEAL)),
+    viewerText: rs(s(AQUA, DARK_BLUE)),
+    viewerStatus: rs(s(BLACK, DARK_TEAL)),
+    viewerSelected: rs(s(BLACK, BRIGHT_YELLOW)),
+    viewerArrows: rs(s(YELLOW, DARK_BLUE, true)),
+    viewerHex: rs(s(DARK_TEAL, DARK_BLUE)),
 };
 
 export type ThemeName = 'far' | 'vscode';
@@ -212,6 +222,11 @@ export const VSCODE_DARK_THEME: Theme = {
     selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
     selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
     symlink: rs(s(A11, D), s(A11, A7)),
+    viewerText: rs(s(D, D)),
+    viewerStatus: rs(s(A0, A7)),
+    viewerSelected: rs(s(A0, A11)),
+    viewerArrows: rs(s(A3, D, true)),
+    viewerHex: rs(s(A8, D)),
 };
 
 export const VSCODE_LIGHT_THEME: Theme = {
@@ -259,6 +274,11 @@ export const VSCODE_LIGHT_THEME: Theme = {
     selectedFile: rs(s(A3, D, true), s(A3, A7, true)),
     selectedDir: rs(s(A3, D, true), s(A3, A7, true)),
     symlink: rs(s(A3, D), s(A3, A7)),
+    viewerText: rs(s(D, D)),
+    viewerStatus: rs(s(A0, A7)),
+    viewerSelected: rs(s(A0, A3)),
+    viewerArrows: rs(s(A3, D, true)),
+    viewerHex: rs(s(A8, D)),
 };
 
 // vscodeThemeKind: 1=Light, 2=Dark, 3=HighContrast, 4=HighContrastLight
@@ -505,4 +525,5 @@ export const THEME_KEYS: (keyof Theme)[] = [
     'menuItemDisabled', 'menuBorder',
     'helpBody', 'helpBold', 'helpLink',
     'selectedFile', 'selectedDir', 'symlink',
+    'viewerText', 'viewerStatus', 'viewerSelected', 'viewerArrows', 'viewerHex',
 ];

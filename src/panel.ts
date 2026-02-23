@@ -37,6 +37,8 @@ import { FKeyBar } from './fkeyBar';
 import { CommandLine } from './commandLine';
 import { isArchiveFile } from './archiveFs';
 import { QuickViewPane } from './quickViewPane';
+import { ViewerPopup } from './viewerPopup';
+import { ViewerSearchPopup, ViewerSearchResult } from './viewerSearchPopup';
 
 export type PanelInputResult =
     | { action: 'quit'; data?: string }
@@ -104,6 +106,8 @@ export class Panel {
     quickViewMode = false;
     splitOffset = 0;
     private quickViewPane = new QuickViewPane();
+    viewerPopup = new ViewerPopup();
+    viewerSearchPopup = new ViewerSearchPopup();
 
     get shellInputLen(): number { return this.commandLine.shellInputLen; }
     set shellInputLen(v: number) { this.commandLine.shellInputLen = v; }
@@ -153,6 +157,10 @@ export class Panel {
     hide(): string {
         this.visible = false;
         this.waitingMode = false;
+        if (this.viewerPopup.active) {
+            this.viewerPopup.close();
+            this.viewerSearchPopup.close();
+        }
         if (this.quickViewMode) {
             this.quickViewPane.cancelScan();
             this.quickViewPane.clear();
@@ -178,7 +186,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup, this.helpPopup, this.userMenuPopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup, this.helpPopup, this.userMenuPopup, this.viewerSearchPopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -211,7 +219,7 @@ export class Panel {
             || this.deleteProgressPopup.active || this.overwritePopup.active
             || this.colorEditorPopup.active || this.themePopup.active
             || this.sortPopup.active || this.helpPopup.active
-            || this.userMenuPopup.active;
+            || this.userMenuPopup.active || this.viewerPopup.active;
     }
 
     private get activePopupObj(): Popup | null {
@@ -263,7 +271,7 @@ export class Panel {
     }
 
     renderClockUpdate(): string {
-        if (!this.visible || !this.settings.clockEnabled || this.hasActivePopup) return '';
+        if (!this.visible || !this.settings.clockEnabled || this.hasActivePopup || this.viewerPopup.active) return '';
         const layout = this.getLayout();
         const t = this.settings.theme;
         const leftIsActive = this.activePane === 'left';
@@ -345,6 +353,19 @@ export class Panel {
         return this.userMenuPopup.renderUserMenuBlink(this.rows, this.cols, this.settings.theme);
     }
 
+    get isViewerSearchBlinkActive(): boolean {
+        return this.viewerSearchPopup.active && this.viewerSearchPopup.hasBlink;
+    }
+
+    resetViewerSearchBlink(): void {
+        this.viewerSearchPopup.resetViewerSearchBlink();
+    }
+
+    renderViewerSearchCursorBlink(): string {
+        if (!this.visible || !this.viewerSearchPopup.active) return '';
+        return this.viewerSearchPopup.renderViewerSearchBlink(this.rows, this.cols, this.settings.theme);
+    }
+
     renderSearchCursorBlink(): string {
         if (!this.visible || !this.searchPopup.active) return '';
         const layout = this.getLayout();
@@ -379,6 +400,44 @@ export class Panel {
                 return this.handleMouse(mouse, layout, activePaneGeo);
             }
             return { action: 'none' };
+        }
+
+        if (this.viewerSearchPopup.active) {
+            const vsResult = this.viewerSearchPopup.handleInput(data);
+            if (vsResult.action === 'close' && vsResult.confirm && vsResult.command) {
+                const sr = vsResult.command as ViewerSearchResult;
+                this.viewerPopup.search({
+                    text: sr.text,
+                    caseSensitive: sr.caseSensitive,
+                    wholeWords: sr.wholeWords,
+                    regex: sr.regex,
+                    hexSearch: sr.hexSearch,
+                }, sr.direction);
+            }
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (this.viewerPopup.active) {
+            const vResult = this.viewerPopup.handleInput(data);
+            switch (vResult.action) {
+                case 'close':
+                    this.viewerPopup.close();
+                    return { action: 'redraw', data: this.render() };
+                case 'openInEditor':
+                    this.viewerPopup.close();
+                    return { action: 'openFile', filePath: vResult.filePath, data: this.render() };
+                case 'openSearch':
+                    this.viewerSearchPopup.openSearch(this.cols);
+                    return { action: 'redraw', data: this.render() };
+                case 'searchNext':
+                    this.viewerPopup.searchNext();
+                    return { action: 'redraw', data: this.render() };
+                case 'searchPrev':
+                    this.viewerPopup.searchPrev();
+                    return { action: 'redraw', data: this.render() };
+                default:
+                    return { action: 'redraw', data: this.render() };
+            }
         }
 
         if (this.overwritePopup.active) {
@@ -544,8 +603,9 @@ export class Panel {
                     entryPath: pane.getArchiveEntryPath(entry.name),
                 };
             }
-            if (entry && entry.name !== '..') {
-                return { action: 'viewFile', filePath: path.join(pane.cwd, entry.name) };
+            if (entry && entry.name !== '..' && !entry.isDir) {
+                this.viewerPopup.open(path.join(pane.cwd, entry.name));
+                return { action: 'redraw', data: this.render() };
             }
             return { action: 'none' };
         }
@@ -1171,6 +1231,32 @@ export class Panel {
     }
 
     private handleMouse(mouse: MouseEvent, layout: Layout, activePaneGeo: PaneGeometry): PanelInputResult {
+        if (this.viewerPopup.active && !this.viewerSearchPopup.active) {
+            if (mouse.isRelease || mouse.isMotion) return { action: 'none' };
+            if (mouse.button === 64 || mouse.button === 65) {
+                const contentHeight = this.rows - 2;
+                this.viewerPopup.handleMouseScroll(mouse.button === 64, contentHeight);
+                return { action: 'redraw', data: this.render() };
+            }
+            if (mouse.button === 0 && mouse.row === layout.fkeyRow) {
+                const result = this.viewerPopup.handleFKeyBarClick(mouse.col, this.cols);
+                if (result.action === 'close') {
+                    this.viewerPopup.close();
+                    return { action: 'redraw', data: this.render() };
+                }
+                if (result.action === 'openInEditor') {
+                    this.viewerPopup.close();
+                    return { action: 'openFile', filePath: result.filePath, data: this.render() };
+                }
+                if (result.action === 'openSearch') {
+                    this.viewerSearchPopup.openSearch(this.cols);
+                    return { action: 'redraw', data: this.render() };
+                }
+                return { action: 'redraw', data: this.render() };
+            }
+            return { action: 'none' };
+        }
+
         const popup = this.activePopupObj;
 
         const resolvePopup = (result: PopupInputResult): PanelInputResult => {
@@ -2058,6 +2144,17 @@ export class Panel {
         const t = this.settings.theme;
         const out: string[] = [];
         const leftIsActive = this.activePane === 'left';
+
+        if (this.viewerPopup.active) {
+            out.push(resetStyle());
+            out.push(this.viewerPopup.render(this.rows, this.cols, t));
+            if (this.viewerSearchPopup.active) {
+                const cellAt = (r: number, c: number) => this.getCellAt(r, c, layout);
+                out.push(this.viewerSearchPopup.render(this.rows, this.cols, t));
+                out.push(this.viewerSearchPopup.renderShadow(cellAt));
+            }
+            return out.join('');
+        }
 
         if (this.quickViewMode) {
             this.updateQuickView();

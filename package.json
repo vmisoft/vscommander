@@ -83,6 +83,14 @@
       {
         "command": "workbench.action.terminal.sendSequence",
         "args": {
+          "text": "\u001b[17~"
+        },
+        "key": "f6",
+        "when": "terminalFocus && vscommander.panelVisible"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
           "text": "\u001b[1;5D"
         },
         "key": "ctrl+left",

@@ -1,5 +1,6 @@
 import { TextStyle } from './settings';
 import { FrameBuffer } from './frameBuffer';
+import { KEY_LEFT, KEY_RIGHT, KEY_TAB, KEY_SHIFT_TAB, KEY_ENTER } from './keys';
 
 export interface ButtonGroupResult {
     consumed: boolean;
@@ -24,17 +25,17 @@ export class ButtonGroup {
     }
 
     handleInput(data: string): ButtonGroupResult {
-        if (data === '\x1b[D' || data === '\x1b[Z') {
+        if (data === KEY_LEFT || data === KEY_SHIFT_TAB) {
             this.selectedIndex = this.nextEnabled(-1);
             return { consumed: true };
         }
 
-        if (data === '\x1b[C' || data === '\t') {
+        if (data === KEY_RIGHT || data === KEY_TAB) {
             this.selectedIndex = this.nextEnabled(1);
             return { consumed: true };
         }
 
-        if (data === '\r') {
+        if (data === KEY_ENTER) {
             if (this.disabledIndices.has(this.selectedIndex)) {
                 return { consumed: true };
             }

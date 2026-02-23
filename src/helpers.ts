@@ -1,9 +1,9 @@
-import { fgColor, bgColor, bold, dim } from './draw';
+import { fgColor, bgColor, bold, dim, sgr } from './draw';
 import { TextStyle, RenderStyle, Theme } from './settings';
 import { DirEntry, PaneGeometry, Layout, PaneStats } from './types';
 
 export function applyStyle(s: TextStyle): string {
-    let out = fgColor(s.fg) + bgColor(s.bg) + '\x1b[22m';
+    let out = fgColor(s.fg) + bgColor(s.bg) + sgr(22);
     if (s.bold) out += bold();
     if (s.dim) out += dim();
     return out;

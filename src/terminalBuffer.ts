@@ -1,3 +1,7 @@
+import { ESC } from './draw';
+
+const SGR_RESET = ESC + '0m';
+
 export class TerminalBuffer {
     private grid: string[][];
     private styleGrid: string[][];
@@ -259,7 +263,7 @@ export class TerminalBuffer {
                 break;
             }
             case 'm': {
-                const raw = '\x1b[' + this.csiBuffer + 'm';
+                const raw = ESC + this.csiBuffer + 'm';
                 if (this.csiBuffer === '' || this.csiBuffer === '0') {
                     this.currentStyle = '';
                 } else {
@@ -331,16 +335,16 @@ export class TerminalBuffer {
         if (n < 0 || n >= this.rows) return '';
         const chars = this.grid[n];
         const styles = this.styleGrid[n];
-        let out = '\x1b[0m';
+        let out = SGR_RESET;
         let lastStyle = '';
         for (let i = 0; i < this.cols; i++) {
             if (styles[i] !== lastStyle) {
-                out += '\x1b[0m' + styles[i];
+                out += SGR_RESET + styles[i];
                 lastStyle = styles[i];
             }
             out += chars[i];
         }
-        out += '\x1b[0m';
+        out += SGR_RESET;
         return out;
     }
 
@@ -348,17 +352,17 @@ export class TerminalBuffer {
         if (n < 0 || n >= this.rows) return ' '.repeat(len);
         const chars = this.grid[n];
         const styles = this.styleGrid[n];
-        let out = '\x1b[0m';
+        let out = SGR_RESET;
         let lastStyle = '';
         const end = Math.min(start + len, this.cols);
         for (let i = start; i < end; i++) {
             if (styles[i] !== lastStyle) {
-                out += '\x1b[0m' + styles[i];
+                out += SGR_RESET + styles[i];
                 lastStyle = styles[i];
             }
             out += chars[i];
         }
-        out += '\x1b[0m';
+        out += SGR_RESET;
         const produced = end - start;
         if (produced < len) {
             out += ' '.repeat(len - produced);

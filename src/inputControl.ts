@@ -2,6 +2,10 @@ import { moveTo, resetStyle } from './draw';
 import { TextStyle } from './settings';
 import { applyStyle } from './helpers';
 import { FrameBuffer } from './frameBuffer';
+import {
+    KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_HOME_ALT, KEY_END, KEY_END_ALT,
+    KEY_DELETE, KEY_BACKSPACE, KEY_BACKSPACE_ALT,
+} from './keys';
 
 export class InputControl {
     buffer = '';
@@ -23,7 +27,7 @@ export class InputControl {
     }
 
     handleInput(data: string): boolean {
-        if (data === '\x1b[D') {
+        if (data === KEY_LEFT) {
             if (this.cursorPos > 0) {
                 this.cursorPos--;
                 this.adjustScroll();
@@ -31,7 +35,7 @@ export class InputControl {
             return true;
         }
 
-        if (data === '\x1b[C') {
+        if (data === KEY_RIGHT) {
             if (this.cursorPos < this.buffer.length) {
                 this.cursorPos++;
                 this.adjustScroll();
@@ -39,19 +43,19 @@ export class InputControl {
             return true;
         }
 
-        if (data === '\x1b[H' || data === '\x1b[1~') {
+        if (data === KEY_HOME || data === KEY_HOME_ALT) {
             this.cursorPos = 0;
             this.scrollOffset = 0;
             return true;
         }
 
-        if (data === '\x1b[F' || data === '\x1b[4~') {
+        if (data === KEY_END || data === KEY_END_ALT) {
             this.cursorPos = this.buffer.length;
             this.adjustScroll();
             return true;
         }
 
-        if (data === '\x7f' || data === '\b') {
+        if (data === KEY_BACKSPACE || data === KEY_BACKSPACE_ALT) {
             if (this.cursorPos > 0) {
                 this.buffer = this.buffer.slice(0, this.cursorPos - 1) + this.buffer.slice(this.cursorPos);
                 this.cursorPos--;
@@ -60,7 +64,7 @@ export class InputControl {
             return true;
         }
 
-        if (data === '\x1b[3~') {
+        if (data === KEY_DELETE) {
             if (this.cursorPos < this.buffer.length) {
                 this.buffer = this.buffer.slice(0, this.cursorPos) + this.buffer.slice(this.cursorPos + 1);
                 this.adjustScroll();

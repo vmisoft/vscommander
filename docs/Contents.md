@@ -14,6 +14,7 @@ Your shell session stays intact underneath.
   [Keyboard Reference](KeyRef.md)
   [File Selection](Selection.md)
   [Quick Search](QuickSearch.md)
+  [User Menu](UserMenu.md)
   [Change Drive](DriveDlg.md)
   [Copy Files](CopyFiles.md)
   [Delete Files](DeleteFile.md)

@@ -23,6 +23,7 @@ The extension runs as a terminal overlay, you can toggle the file panel on and o
 - **Quick View**: `Ctrl+Q` previews files in a VS Code split editor; shows directory info (sub-directory/file counts, total size) for directories
 - **Half-panel mode**: `Ctrl+P` hides one pane to show color-rich terminal output alongside your files; commands run inline without hiding the panel
 - **Multi-column layout**: 1, 2, or 3 file columns per pane (configurable)
+- **User Menu (F2)**: Configurable shell command launcher with hotkey navigation, variable substitution (`!.!` filename, `!\` directory, `!&` selected files, `!?prompt?!` interactive input), in-menu editing, submenus, and dual-scope storage (user/workspace)
 - **Top menu bar**: F9 opens a Far Manager-style menu with Left, Files, Commands, Options, Right menus for sorting, column layout, and all panel operations
 - **Built-in help system**: Press `F1` for a Far Manager-style help viewer with topic navigation, scrollable content, hotkey highlighting, and link following
 - **Archive browsing**: Navigate into ZIP, TAR, 7Z, and RAR archives as if they were directories; view, extract, add, delete, and move files within archives (ZIP and 7Z support full write operations)

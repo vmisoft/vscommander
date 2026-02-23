@@ -2,9 +2,15 @@ import * as os from 'os';
 import { DBOX, BOX, MBOX } from './draw';
 import { Theme } from './settings';
 import { SortMode } from './types';
-import { Popup, PopupInputResult } from './popup';
+import { PopupInputResult } from './popup';
+import { ComposedPopup } from './composedPopup';
+import { menuFormTheme, FormTheme } from './formView';
 import { FrameBuffer } from './frameBuffer';
 import { CHECK_MARK, SORT_ASC, SORT_DESC } from './visualPrimitives';
+import {
+    KEY_UP, KEY_DOWN, KEY_HOME, KEY_HOME_ALT, KEY_END, KEY_END_ALT,
+    KEY_ENTER, KEY_ESCAPE, KEY_DOUBLE_ESCAPE, KEY_SPACE,
+} from './keys';
 
 interface SortItem {
     type: 'item' | 'separator';
@@ -21,7 +27,13 @@ export interface SortPopupResult {
     reversed?: boolean;
 }
 
-export class SortPopup extends Popup {
+function sortMenuTheme(theme: Theme): FormTheme {
+    const base = menuFormTheme(theme);
+    base.border = theme.menuBorder;
+    return base;
+}
+
+export class SortPopup extends ComposedPopup {
     private items: SortItem[] = [];
     selectedItem = 0;
     private pane: 'left' | 'right' = 'left';
@@ -49,6 +61,20 @@ export class SortPopup extends Popup {
         this.dirsFirst = dirsFirst;
         this.buildItems();
         this.selectedItem = this.findCurrentSortItem();
+
+        const view = this.createView('Sort modes', DBOX, sortMenuTheme);
+        view.minWidth = this.computeBoxWidth();
+
+        view.addCustom(this.items.length, true, (fb, row, col, innerWidth, _focused, ft, theme) => {
+            this.renderItems(fb, row, col, innerWidth, ft, theme);
+        });
+
+        view.onInput = (data) => this.handleSortInput(data);
+        view.onScroll = (up) => {
+            this.selectedItem = this.nextSelectableItem(up ? -1 : 1);
+        };
+
+        this.setActiveView(view);
         super.open();
     }
 
@@ -88,37 +114,117 @@ export class SortPopup extends Popup {
         );
     }
 
-    handleInput(data: string): PopupInputResult {
-        if (data === '\x1b' || data === '\x1b\x1b') {
+    private computeBoxWidth(): number {
+        let maxLabel = 0;
+        let maxShortcut = 0;
+        for (const item of this.items) {
+            if (item.type !== 'item') continue;
+            const label = item.label ?? '';
+            if (label.length > maxLabel) maxLabel = label.length;
+            const sc = item.shortcut ?? '';
+            if (sc.length > maxShortcut) maxShortcut = sc.length;
+        }
+        const checkCol = 2;
+        const labelStart = checkCol + 2;
+        const gap = maxShortcut > 0 ? 2 : 0;
+        const innerWidth = labelStart + maxLabel + gap + maxShortcut + 1;
+        return innerWidth + 2;
+    }
+
+    private renderItems(fb: FrameBuffer, row: number, col: number,
+                        innerWidth: number, ft: FormTheme, _theme: Theme): void {
+        const borderStyle = ft.border ? ft.border.idle : ft.body.idle;
+        const boxChars = DBOX;
+
+        let maxLabel = 0;
+        let maxShortcut = 0;
+        for (const item of this.items) {
+            if (item.type !== 'item') continue;
+            if ((item.label ?? '').length > maxLabel) maxLabel = (item.label ?? '').length;
+            if ((item.shortcut ?? '').length > maxShortcut) maxShortcut = (item.shortcut ?? '').length;
+        }
+        const checkCol = 2;
+        const labelStart = checkCol + 2;
+
+        let r = row;
+        for (let itemIdx = 0; itemIdx < this.items.length; itemIdx++) {
+            const item = this.items[itemIdx];
+            if (item.type === 'separator') {
+                fb.drawSeparator(r, col - 1, innerWidth + 2, borderStyle,
+                    MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
+                r++;
+                continue;
+            }
+
+            const isSelected = this.selectedItem === itemIdx;
+            const label = item.label ?? '';
+            const shortcut = item.shortcut ?? '';
+            const hotkeyIdx = item.hotkeyIndex ?? 0;
+
+            const itemStyle = isSelected ? ft.body.selected : ft.body.idle;
+            const hotkeyStyle = isSelected ? ft.hotkey.selected : ft.hotkey.idle;
+
+            fb.write(r, col - 1, boxChars.vertical, borderStyle);
+            fb.fill(r, col, innerWidth, 1, ' ', itemStyle);
+            fb.write(r, col + innerWidth, boxChars.vertical, borderStyle);
+
+            let mark = ' ';
+            if (item.mode && item.mode === this.sortMode) {
+                mark = this.sortReversed ? SORT_DESC : SORT_ASC;
+            } else if (item.toggle === 'dirsFirst' && this.dirsFirst) {
+                mark = CHECK_MARK;
+            } else if (item.toggle === 'sortGroups' && this.useSortGroups) {
+                mark = CHECK_MARK;
+            } else if (item.toggle === 'selectedFirst' && this.selectedFirst) {
+                mark = CHECK_MARK;
+            }
+            fb.write(r, col + checkCol - 1, mark, itemStyle);
+
+            fb.write(r, col + labelStart - 1, label, itemStyle);
+            if (hotkeyIdx < label.length) {
+                fb.write(r, col + labelStart - 1 + hotkeyIdx, label[hotkeyIdx], hotkeyStyle);
+            }
+
+            if (shortcut.length > 0) {
+                const scCol = col + innerWidth - shortcut.length;
+                fb.write(r, scCol, shortcut, itemStyle);
+            }
+
+            r++;
+        }
+    }
+
+    private handleSortInput(data: string): PopupInputResult | null {
+        if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
             this.close();
             return { action: 'close', confirm: false };
         }
 
-        if (data === '\x1b[B') {
+        if (data === KEY_DOWN) {
             this.selectedItem = this.nextSelectableItem(1);
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[A') {
+        if (data === KEY_UP) {
             this.selectedItem = this.nextSelectableItem(-1);
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[H' || data === '\x1b[1~') {
+        if (data === KEY_HOME || data === KEY_HOME_ALT) {
             this.selectedItem = this.firstSelectableItem();
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[F' || data === '\x1b[4~') {
+        if (data === KEY_END || data === KEY_END_ALT) {
             this.selectedItem = this.lastSelectableItem();
             return { action: 'consumed' };
         }
 
-        if (data === '\r') {
+        if (data === KEY_ENTER) {
             return this.activateCurrentItem();
         }
 
-        if (data === ' ') {
+        if (data === KEY_SPACE) {
             const item = this.items[this.selectedItem];
             if (item && item.toggle === 'dirsFirst') {
                 return this.activateCurrentItem();
@@ -187,7 +293,7 @@ export class SortPopup extends Popup {
         return { action: 'consumed' };
     }
 
-    protected override onMouseDown(fbRow: number, fbCol: number): PopupInputResult | null {
+    protected override onMouseDown(fbRow: number, _fbCol: number): PopupInputResult | null {
         const itemIdx = this.rowToItem(fbRow - this.padV);
         if (itemIdx >= 0) {
             this.selectedItem = itemIdx;
@@ -245,92 +351,10 @@ export class SortPopup extends Popup {
         return this.selectedItem;
     }
 
-    override renderToBuffer(theme: Theme): FrameBuffer {
-        const t = theme;
-        const borderStyle = t.menuBorder.idle;
-
-        let maxLabel = 0;
-        let maxShortcut = 0;
-        for (const item of this.items) {
-            if (item.type !== 'item') continue;
-            const label = item.label ?? '';
-            if (label.length > maxLabel) maxLabel = label.length;
-            const sc = item.shortcut ?? '';
-            if (sc.length > maxShortcut) maxShortcut = sc.length;
-        }
-
-        const checkCol = 2;
-        const labelStart = checkCol + 2;
-        const gap = maxShortcut > 0 ? 2 : 0;
-        const innerWidth = labelStart + maxLabel + gap + maxShortcut + 1;
-        const boxWidth = innerWidth + 2;
-
-        let contentRows = 0;
-        for (const item of this.items) {
-            contentRows++;
-        }
-        const boxHeight = contentRows + 2;
-        const totalWidth = boxWidth + 2 * this.padH;
-        const totalHeight = boxHeight + 2 * this.padV;
-
-        const fb = new FrameBuffer(totalWidth, totalHeight);
-        const bodyStyle = t.menuItem.idle;
-        fb.fill(0, 0, totalWidth, totalHeight, ' ', bodyStyle);
-        fb.drawBox(this.padV, this.padH, boxWidth, boxHeight, borderStyle, DBOX, 'Sort modes');
-
-        let row = this.padV + 1;
-        for (let itemIdx = 0; itemIdx < this.items.length; itemIdx++) {
-            const item = this.items[itemIdx];
-            if (item.type === 'separator') {
-                fb.drawSeparator(row, this.padH, boxWidth, borderStyle,
-                    MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
-                row++;
-                continue;
-            }
-
-            const isSelected = this.selectedItem === itemIdx;
-            const label = item.label ?? '';
-            const shortcut = item.shortcut ?? '';
-            const hotkeyIdx = item.hotkeyIndex ?? 0;
-
-            const itemStyle = isSelected ? t.menuItem.selected : t.menuItem.idle;
-            const hotkeyStyle = isSelected ? t.menuItemHotkey.selected : t.menuItemHotkey.idle;
-
-            fb.write(row, this.padH, DBOX.vertical, borderStyle);
-            fb.fill(row, this.padH + 1, innerWidth, 1, ' ', itemStyle);
-            fb.write(row, this.padH + innerWidth + 1, DBOX.vertical, borderStyle);
-
-            let mark = ' ';
-            if (item.mode && item.mode === this.sortMode) {
-                mark = this.sortReversed ? SORT_DESC : SORT_ASC;
-            } else if (item.toggle === 'dirsFirst' && this.dirsFirst) {
-                mark = CHECK_MARK;
-            } else if (item.toggle === 'sortGroups' && this.useSortGroups) {
-                mark = CHECK_MARK;
-            } else if (item.toggle === 'selectedFirst' && this.selectedFirst) {
-                mark = CHECK_MARK;
-            }
-            fb.write(row, this.padH + checkCol, mark, itemStyle);
-
-            fb.write(row, this.padH + labelStart, label, itemStyle);
-            if (hotkeyIdx < label.length) {
-                fb.write(row, this.padH + labelStart + hotkeyIdx, label[hotkeyIdx], hotkeyStyle);
-            }
-
-            if (shortcut.length > 0) {
-                const scCol = this.padH + 1 + innerWidth - 1 - shortcut.length;
-                fb.write(row, scCol, shortcut, itemStyle);
-            }
-
-            row++;
-        }
-
-        return fb;
-    }
-
     render(paneStartCol: number, paneWidth: number, theme: Theme, listStart?: number, listHeight?: number): string {
         if (!this.active) return '';
         const fb = this.renderToBuffer(theme);
+        if (fb.width === 0 || fb.height === 0) return '';
         const lStart = typeof listStart === 'number' ? listStart : 1;
         const lHeight = typeof listHeight === 'number' ? listHeight : 20;
         const areaHeight = lHeight + 2;

@@ -1,10 +1,17 @@
-import { hideCursor, DBOX, BOX, MBOX } from './draw';
+import { hideCursor, BOX, MBOX } from './draw';
 import { Theme, TextStyle, RenderStyle, ColorOverride } from './settings';
-import { Popup, PopupInputResult } from './popup';
+import { PopupInputResult } from './popup';
+import { ComposedPopup } from './composedPopup';
+import { FormTheme } from './formView';
 import { InputControl } from './inputControl';
 import { CheckboxControl } from './checkboxControl';
 import { ButtonGroup } from './buttonGroup';
 import { FrameBuffer } from './frameBuffer';
+import {
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_HOME_ALT,
+    KEY_END, KEY_END_ALT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_TAB, KEY_SHIFT_TAB,
+    KEY_ENTER, KEY_ESCAPE, KEY_DOUBLE_ESCAPE, KEY_SPACE,
+} from './keys';
 
 interface ElementDef {
     key: string;
@@ -75,7 +82,7 @@ const ANSI_PREVIEW_COLORS: string[] = [
 const POPUP_WIDTH = 60;
 const LIST_WIDTH = 17;
 const LIST_HEIGHT = 15;
-const POPUP_HEIGHT = 22;
+const CONTENT_HEIGHT = 18;
 
 const FOCUS_LIST = 0;
 const FOCUS_STATE = 1;
@@ -109,7 +116,7 @@ function hexFromColor(c: string): string {
     return c;
 }
 
-export class ColorEditorPopup extends Popup {
+export class ColorEditorPopup extends ComposedPopup {
     private elements = ELEMENT_DEFS;
     private selectableIndices: number[] = [];
     private cursor = 0;
@@ -158,12 +165,378 @@ export class ColorEditorPopup extends Popup {
         this.buttons = new ButtonGroup(['OK', 'Cancel']);
         this.buildSelectableIndices();
         this.loadCurrentElement();
+        this.buildView();
         super.open();
     }
 
     getOverrides(): Record<string, ColorOverride> {
         return this.overrides;
     }
+
+    private buildView(): void {
+        const view = this.createView('Colors');
+        view.minWidth = POPUP_WIDTH;
+
+        view.addCustom(CONTENT_HEIGHT, true, (fb, row, col, innerWidth, _focused, ft, theme) => {
+            this.renderMainContent(fb, row, col, innerWidth, ft, theme);
+        }, (absRow, absCol, ft) => {
+            return this.renderBlinkContent(absRow, absCol, ft);
+        });
+        view.addSeparator();
+        view.addCustom(1, true, (fb, row, col, innerWidth, _focused, ft) => {
+            fb.blit(row, col, this.buttons.renderToBuffer(
+                innerWidth, ft.body.idle, ft.button.idle, ft.button.selected,
+                this.focusArea === FOCUS_BUTTONS));
+        });
+
+        view.onInput = (data) => this.handleColorInput(data);
+        view.onScroll = (up) => {
+            if (this.focusArea === FOCUS_LIST) {
+                this.saveCurrentElement();
+                if (up && this.cursor > 0) {
+                    this.cursor--;
+                } else if (!up && this.cursor < this.selectableIndices.length - 1) {
+                    this.cursor++;
+                }
+                this.ensureVisible();
+                this.loadCurrentElement();
+            }
+        };
+
+        this.setActiveView(view);
+    }
+
+    get hasBlink(): boolean {
+        return this.focusArea === FOCUS_FG_HEX || this.focusArea === FOCUS_BG_HEX;
+    }
+
+    // --- Main content rendering ---
+
+    private renderMainContent(fb: FrameBuffer, row: number, col: number,
+                              _innerWidth: number, ft: FormTheme, theme: Theme): void {
+        const bodyStyle = ft.body.idle;
+        const inputStyle = ft.input.idle;
+        const cursorStyle = ft.inputCursor.idle;
+        const labelStyle = ft.label.idle;
+
+        const rightLeft = col + LIST_WIDTH + 1;
+
+        for (let r = 0; r < LIST_HEIGHT; r++) {
+            fb.write(row + r, col + LIST_WIDTH, BOX.vertical, bodyStyle);
+        }
+
+        const visible = this.visibleElements();
+        for (let r = 0; r < LIST_HEIGHT; r++) {
+            const v = visible.find(ve => ve.displayIdx - this.scroll === r);
+            if (!v) {
+                fb.fill(row + r, col, LIST_WIDTH, 1, ' ', bodyStyle);
+                continue;
+            }
+            const highlightStyle = v.isCurrent ? inputStyle : bodyStyle;
+            fb.fill(row + r, col, LIST_WIDTH, 1, ' ', v.isCurrent ? highlightStyle : bodyStyle);
+            if (v.elem.isGroup) {
+                fb.write(row + r, col, v.elem.label.slice(0, LIST_WIDTH), labelStyle);
+            } else {
+                const prefix = v.isCurrent ? '> ' : '  ';
+                const text = (prefix + v.elem.label).slice(0, LIST_WIDTH);
+                fb.write(row + r, col, text, v.isCurrent ? highlightStyle : bodyStyle);
+            }
+        }
+
+        const stateLabel = 'State: ';
+        fb.write(row, rightLeft + 1, stateLabel, bodyStyle);
+        const idleRadio = this.editState === 'idle' ? '(o)' : '( )';
+        const selRadio = this.editState === 'selected' ? '(o)' : '( )';
+        const stateStyle = this.focusArea === FOCUS_STATE ? inputStyle : bodyStyle;
+        fb.write(row, rightLeft + 1 + stateLabel.length, idleRadio + 'Idle ', stateStyle);
+        fb.write(row, rightLeft + 1 + stateLabel.length + idleRadio.length + 5, selRadio + 'Selected', stateStyle);
+
+        fb.write(row + 2, rightLeft + 1, 'Foreground:', bodyStyle);
+        this.renderGrid(fb, row + 3, rightLeft + 1, this.fgGridIndex, this.focusArea === FOCUS_FG_GRID, theme);
+
+        const dfFg = this.fgGridIndex === 16 ? '<Df>' : ' Df ';
+        const dfFgStyle = this.focusArea === FOCUS_FG_GRID && this.fgGridIndex === 16 ? inputStyle : bodyStyle;
+        fb.write(row + 5, rightLeft + 1, dfFg, dfFgStyle);
+        fb.write(row + 5, rightLeft + 6, 'Hex: ', bodyStyle);
+        fb.blit(row + 5, rightLeft + 11, this.fgHexInput.renderToBuffer(inputStyle, cursorStyle, this.focusArea === FOCUS_FG_HEX));
+
+        fb.write(row + 7, rightLeft + 1, 'Background:', bodyStyle);
+        this.renderGrid(fb, row + 8, rightLeft + 1, this.bgGridIndex, this.focusArea === FOCUS_BG_GRID, theme);
+
+        const dfBg = this.bgGridIndex === 16 ? '<Df>' : ' Df ';
+        const dfBgStyle = this.focusArea === FOCUS_BG_GRID && this.bgGridIndex === 16 ? inputStyle : bodyStyle;
+        fb.write(row + 10, rightLeft + 1, dfBg, dfBgStyle);
+        fb.write(row + 10, rightLeft + 6, 'Hex: ', bodyStyle);
+        fb.blit(row + 10, rightLeft + 11, this.bgHexInput.renderToBuffer(inputStyle, cursorStyle, this.focusArea === FOCUS_BG_HEX));
+
+        const cbFocused = this.focusArea === FOCUS_BOLD;
+        const cbStyle = cbFocused ? inputStyle : bodyStyle;
+        fb.blit(row + 12, rightLeft + 1, this.boldCheckbox.renderToBuffer(bodyStyle, cbStyle, cbFocused));
+
+        fb.write(row + 14, rightLeft + 1, 'Sample: ', bodyStyle);
+        const sampleFg = this.getFgColor();
+        const sampleBg = this.getBgColor();
+        const sampleStyle: TextStyle = { fg: sampleFg, bg: sampleBg, bold: this.boldCheckbox.checked };
+        fb.write(row + 14, rightLeft + 9, 'Sample text', sampleStyle);
+    }
+
+    private renderGrid(fb: FrameBuffer, row: number, col: number,
+                       selectedIdx: number, focused: boolean, theme: Theme): void {
+        const bodyStyle = theme.popupInfoBody.idle;
+        for (let r = 0; r < 2; r++) {
+            for (let c = 0; c < 8; c++) {
+                const idx = r * 8 + c;
+                const x = col + c * 3;
+                const color = ANSI_PREVIEW_COLORS[idx];
+                const cellStyle: TextStyle = { fg: color, bg: color, bold: false };
+                const isSelected = selectedIdx === idx;
+                if (isSelected && focused) {
+                    fb.write(row + r, x, '<', bodyStyle);
+                    fb.write(row + r, x + 1, ' ', cellStyle);
+                    fb.write(row + r, x + 2, '>', bodyStyle);
+                } else if (isSelected) {
+                    fb.write(row + r, x, '[', bodyStyle);
+                    fb.write(row + r, x + 1, ' ', cellStyle);
+                    fb.write(row + r, x + 2, ']', bodyStyle);
+                } else {
+                    fb.write(row + r, x, ' ', cellStyle);
+                    fb.write(row + r, x + 1, ' ', cellStyle);
+                    fb.write(row + r, x + 2, ' ', bodyStyle);
+                }
+            }
+        }
+    }
+
+    private renderBlinkContent(absRow: number, absCol: number, ft: FormTheme): string {
+        const inputStyle = ft.input.idle;
+        const cursorStyle = ft.inputCursor.idle;
+        const rightLeft = absCol + LIST_WIDTH + 1;
+
+        let out = '';
+        if (this.focusArea === FOCUS_FG_HEX) {
+            out += this.fgHexInput.renderBlink(absRow + 5, rightLeft + 11, inputStyle, cursorStyle);
+        } else if (this.focusArea === FOCUS_BG_HEX) {
+            out += this.bgHexInput.renderBlink(absRow + 10, rightLeft + 11, inputStyle, cursorStyle);
+        }
+        out += hideCursor();
+        return out;
+    }
+
+    renderColorEditorBlink(rows: number, cols: number, theme: Theme): string {
+        if (!this.active || !this.hasBlink) return '';
+        return this.renderBlink(rows, cols, theme);
+    }
+
+    resetColorEditorBlink(): void {
+        this.fgHexInput.resetBlink();
+        this.bgHexInput.resetBlink();
+    }
+
+    // --- Input handling ---
+
+    private handleColorInput(data: string): PopupInputResult | null {
+        if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
+            this.close();
+            return { action: 'close', confirm: false };
+        }
+
+        if (data === KEY_TAB) {
+            this.saveCurrentElement();
+            this.focusArea = (this.focusArea + 1) % FOCUS_COUNT;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+
+        if (data === KEY_SHIFT_TAB) {
+            this.saveCurrentElement();
+            this.focusArea = (this.focusArea - 1 + FOCUS_COUNT) % FOCUS_COUNT;
+            this.resetActiveBlink();
+            return { action: 'consumed' };
+        }
+
+        switch (this.focusArea) {
+            case FOCUS_LIST:
+                return this.handleListInput(data);
+            case FOCUS_STATE:
+                return this.handleStateInput(data);
+            case FOCUS_FG_GRID:
+                return this.handleGridInput(data, 'fg');
+            case FOCUS_FG_HEX:
+                return this.handleHexInput(data, this.fgHexInput, 'fg');
+            case FOCUS_BG_GRID:
+                return this.handleGridInput(data, 'bg');
+            case FOCUS_BG_HEX:
+                return this.handleHexInput(data, this.bgHexInput, 'bg');
+            case FOCUS_BOLD:
+                return this.handleBoldInput(data);
+            case FOCUS_BUTTONS:
+                return this.handleButtonInput(data);
+        }
+        return { action: 'consumed' };
+    }
+
+    private handleListInput(data: string): PopupInputResult {
+        if (data === KEY_UP) {
+            if (this.cursor > 0) {
+                this.saveCurrentElement();
+                this.cursor--;
+                this.ensureVisible();
+                this.loadCurrentElement();
+            }
+            return { action: 'consumed' };
+        }
+        if (data === KEY_DOWN) {
+            if (this.cursor < this.selectableIndices.length - 1) {
+                this.saveCurrentElement();
+                this.cursor++;
+                this.ensureVisible();
+                this.loadCurrentElement();
+            }
+            return { action: 'consumed' };
+        }
+        if (data === KEY_HOME || data === KEY_HOME_ALT) {
+            this.saveCurrentElement();
+            this.cursor = 0;
+            this.scroll = 0;
+            this.loadCurrentElement();
+            return { action: 'consumed' };
+        }
+        if (data === KEY_END || data === KEY_END_ALT) {
+            this.saveCurrentElement();
+            this.cursor = this.selectableIndices.length - 1;
+            this.ensureVisible();
+            this.loadCurrentElement();
+            return { action: 'consumed' };
+        }
+        if (data === KEY_PAGE_UP) {
+            this.saveCurrentElement();
+            this.cursor = Math.max(0, this.cursor - LIST_HEIGHT);
+            this.ensureVisible();
+            this.loadCurrentElement();
+            return { action: 'consumed' };
+        }
+        if (data === KEY_PAGE_DOWN) {
+            this.saveCurrentElement();
+            this.cursor = Math.min(this.selectableIndices.length - 1, this.cursor + LIST_HEIGHT);
+            this.ensureVisible();
+            this.loadCurrentElement();
+            return { action: 'consumed' };
+        }
+        if (data === KEY_ENTER) {
+            this.saveCurrentElement();
+            this.focusArea = FOCUS_FG_GRID;
+            return { action: 'consumed' };
+        }
+        return { action: 'consumed' };
+    }
+
+    private handleStateInput(data: string): PopupInputResult {
+        if (data === KEY_LEFT || data === KEY_RIGHT || data === KEY_SPACE) {
+            this.saveCurrentElement();
+            this.editState = this.editState === 'idle' ? 'selected' : 'idle';
+            this.loadCurrentElement();
+            return { action: 'consumed' };
+        }
+        return { action: 'consumed' };
+    }
+
+    private handleGridInput(data: string, which: 'fg' | 'bg'): PopupInputResult {
+        const idx = which === 'fg' ? this.fgGridIndex : this.bgGridIndex;
+        let newIdx = idx;
+
+        if (data === KEY_RIGHT) {
+            if (idx < 0 || idx === 16) newIdx = 0;
+            else if (idx < 15) newIdx = idx + 1;
+            else newIdx = 16;
+        } else if (data === KEY_LEFT) {
+            if (idx <= 0) newIdx = 16;
+            else if (idx === 16) newIdx = 15;
+            else newIdx = idx - 1;
+        } else if (data === KEY_DOWN) {
+            if (idx >= 0 && idx < 8) newIdx = idx + 8;
+            else if (idx >= 8 && idx < 16) newIdx = 16;
+            else if (idx === 16) newIdx = 16;
+            else newIdx = 0;
+        } else if (data === KEY_UP) {
+            if (idx >= 8 && idx < 16) newIdx = idx - 8;
+            else if (idx === 16) newIdx = 8;
+            else if (idx >= 0 && idx < 8) newIdx = idx;
+            else newIdx = 0;
+        } else if (data === KEY_SPACE || data === KEY_ENTER) {
+            this.saveCurrentElement();
+            return { action: 'consumed' };
+        } else {
+            return { action: 'consumed' };
+        }
+
+        if (which === 'fg') {
+            this.fgGridIndex = newIdx;
+            this.fgHexInput.reset('');
+        } else {
+            this.bgGridIndex = newIdx;
+            this.bgHexInput.reset('');
+        }
+        this.saveCurrentElement();
+        return { action: 'consumed' };
+    }
+
+    private handleHexInput(data: string, input: InputControl, which: 'fg' | 'bg'): PopupInputResult {
+        if (data === KEY_ENTER) {
+            if (input.buffer.length === 6 && /^[0-9a-fA-F]{6}$/.test(input.buffer)) {
+                if (which === 'fg') this.fgGridIndex = -1;
+                else this.bgGridIndex = -1;
+                this.saveCurrentElement();
+            }
+            return { action: 'consumed' };
+        }
+        const ch = data.length === 1 ? data : '';
+        if (ch && /^[0-9a-fA-F]$/.test(ch) && input.buffer.length < 6) {
+            input.handleInput(data);
+            input.resetBlink();
+            if (input.buffer.length === 6 && /^[0-9a-fA-F]{6}$/.test(input.buffer)) {
+                if (which === 'fg') this.fgGridIndex = -1;
+                else this.bgGridIndex = -1;
+                this.saveCurrentElement();
+            }
+            return { action: 'consumed' };
+        }
+        if (input.handleInput(data)) {
+            input.resetBlink();
+            if (input.buffer.length === 6 && /^[0-9a-fA-F]{6}$/.test(input.buffer)) {
+                if (which === 'fg') this.fgGridIndex = -1;
+                else this.bgGridIndex = -1;
+                this.saveCurrentElement();
+            }
+            return { action: 'consumed' };
+        }
+        return { action: 'consumed' };
+    }
+
+    private handleBoldInput(data: string): PopupInputResult {
+        if (this.boldCheckbox.handleInput(data)) {
+            this.saveCurrentElement();
+            return { action: 'consumed' };
+        }
+        return { action: 'consumed' };
+    }
+
+    private handleButtonInput(data: string): PopupInputResult {
+        const result = this.buttons.handleInput(data);
+        if (result.confirmed) {
+            if (this.buttons.selectedIndex === 1) {
+                this.close();
+                return { action: 'close', confirm: false };
+            }
+            this.saveCurrentElement();
+            return this.closeWithConfirm();
+        }
+        if (result.consumed) {
+            return { action: 'consumed' };
+        }
+        return { action: 'consumed' };
+    }
+
+    // --- Element state management ---
 
     private currentElementKey(): string {
         if (this.selectableIndices.length === 0) return '';
@@ -252,207 +625,7 @@ export class ColorEditorPopup extends Popup {
         return this.getResolvedStyle().bg;
     }
 
-    handleInput(data: string): PopupInputResult {
-        if (data === '\x1b' || data === '\x1b\x1b') {
-            this.close();
-            return { action: 'close', confirm: false };
-        }
-
-        if (data === '\t') {
-            this.saveCurrentElement();
-            this.focusArea = (this.focusArea + 1) % FOCUS_COUNT;
-            this.resetActiveBlink();
-            return { action: 'consumed' };
-        }
-
-        if (data === '\x1b[Z') {
-            this.saveCurrentElement();
-            this.focusArea = (this.focusArea - 1 + FOCUS_COUNT) % FOCUS_COUNT;
-            this.resetActiveBlink();
-            return { action: 'consumed' };
-        }
-
-        switch (this.focusArea) {
-            case FOCUS_LIST:
-                return this.handleListInput(data);
-            case FOCUS_STATE:
-                return this.handleStateInput(data);
-            case FOCUS_FG_GRID:
-                return this.handleGridInput(data, 'fg');
-            case FOCUS_FG_HEX:
-                return this.handleHexInput(data, this.fgHexInput, 'fg');
-            case FOCUS_BG_GRID:
-                return this.handleGridInput(data, 'bg');
-            case FOCUS_BG_HEX:
-                return this.handleHexInput(data, this.bgHexInput, 'bg');
-            case FOCUS_BOLD:
-                return this.handleBoldInput(data);
-            case FOCUS_BUTTONS:
-                return this.handleButtonInput(data);
-        }
-        return { action: 'consumed' };
-    }
-
-    private handleListInput(data: string): PopupInputResult {
-        if (data === '\x1b[A') {
-            if (this.cursor > 0) {
-                this.saveCurrentElement();
-                this.cursor--;
-                this.ensureVisible();
-                this.loadCurrentElement();
-            }
-            return { action: 'consumed' };
-        }
-        if (data === '\x1b[B') {
-            if (this.cursor < this.selectableIndices.length - 1) {
-                this.saveCurrentElement();
-                this.cursor++;
-                this.ensureVisible();
-                this.loadCurrentElement();
-            }
-            return { action: 'consumed' };
-        }
-        if (data === '\x1b[H' || data === '\x1b[1~') {
-            this.saveCurrentElement();
-            this.cursor = 0;
-            this.scroll = 0;
-            this.loadCurrentElement();
-            return { action: 'consumed' };
-        }
-        if (data === '\x1b[F' || data === '\x1b[4~') {
-            this.saveCurrentElement();
-            this.cursor = this.selectableIndices.length - 1;
-            this.ensureVisible();
-            this.loadCurrentElement();
-            return { action: 'consumed' };
-        }
-        if (data === '\x1b[5~') {
-            this.saveCurrentElement();
-            this.cursor = Math.max(0, this.cursor - LIST_HEIGHT);
-            this.ensureVisible();
-            this.loadCurrentElement();
-            return { action: 'consumed' };
-        }
-        if (data === '\x1b[6~') {
-            this.saveCurrentElement();
-            this.cursor = Math.min(this.selectableIndices.length - 1, this.cursor + LIST_HEIGHT);
-            this.ensureVisible();
-            this.loadCurrentElement();
-            return { action: 'consumed' };
-        }
-        if (data === '\r') {
-            this.saveCurrentElement();
-            this.focusArea = FOCUS_FG_GRID;
-            return { action: 'consumed' };
-        }
-        return { action: 'consumed' };
-    }
-
-    private handleStateInput(data: string): PopupInputResult {
-        if (data === '\x1b[D' || data === '\x1b[C' || data === ' ') {
-            this.saveCurrentElement();
-            this.editState = this.editState === 'idle' ? 'selected' : 'idle';
-            this.loadCurrentElement();
-            return { action: 'consumed' };
-        }
-        return { action: 'consumed' };
-    }
-
-    private handleGridInput(data: string, which: 'fg' | 'bg'): PopupInputResult {
-        const idx = which === 'fg' ? this.fgGridIndex : this.bgGridIndex;
-        let newIdx = idx;
-
-        if (data === '\x1b[C') {
-            if (idx < 0 || idx === 16) newIdx = 0;
-            else if (idx < 15) newIdx = idx + 1;
-            else newIdx = 16;
-        } else if (data === '\x1b[D') {
-            if (idx <= 0) newIdx = 16;
-            else if (idx === 16) newIdx = 15;
-            else newIdx = idx - 1;
-        } else if (data === '\x1b[B') {
-            if (idx >= 0 && idx < 8) newIdx = idx + 8;
-            else if (idx >= 8 && idx < 16) newIdx = 16;
-            else if (idx === 16) newIdx = 16;
-            else newIdx = 0;
-        } else if (data === '\x1b[A') {
-            if (idx >= 8 && idx < 16) newIdx = idx - 8;
-            else if (idx === 16) newIdx = 8;
-            else if (idx >= 0 && idx < 8) newIdx = idx;
-            else newIdx = 0;
-        } else if (data === ' ' || data === '\r') {
-            this.saveCurrentElement();
-            return { action: 'consumed' };
-        } else {
-            return { action: 'consumed' };
-        }
-
-        if (which === 'fg') {
-            this.fgGridIndex = newIdx;
-            this.fgHexInput.reset('');
-        } else {
-            this.bgGridIndex = newIdx;
-            this.bgHexInput.reset('');
-        }
-        this.saveCurrentElement();
-        return { action: 'consumed' };
-    }
-
-    private handleHexInput(data: string, input: InputControl, which: 'fg' | 'bg'): PopupInputResult {
-        if (data === '\r') {
-            if (input.buffer.length === 6 && /^[0-9a-fA-F]{6}$/.test(input.buffer)) {
-                if (which === 'fg') this.fgGridIndex = -1;
-                else this.bgGridIndex = -1;
-                this.saveCurrentElement();
-            }
-            return { action: 'consumed' };
-        }
-        const ch = data.length === 1 ? data : '';
-        if (ch && /^[0-9a-fA-F]$/.test(ch) && input.buffer.length < 6) {
-            input.handleInput(data);
-            input.resetBlink();
-            if (input.buffer.length === 6 && /^[0-9a-fA-F]{6}$/.test(input.buffer)) {
-                if (which === 'fg') this.fgGridIndex = -1;
-                else this.bgGridIndex = -1;
-                this.saveCurrentElement();
-            }
-            return { action: 'consumed' };
-        }
-        if (input.handleInput(data)) {
-            input.resetBlink();
-            if (input.buffer.length === 6 && /^[0-9a-fA-F]{6}$/.test(input.buffer)) {
-                if (which === 'fg') this.fgGridIndex = -1;
-                else this.bgGridIndex = -1;
-                this.saveCurrentElement();
-            }
-            return { action: 'consumed' };
-        }
-        return { action: 'consumed' };
-    }
-
-    private handleBoldInput(data: string): PopupInputResult {
-        if (this.boldCheckbox.handleInput(data)) {
-            this.saveCurrentElement();
-            return { action: 'consumed' };
-        }
-        return { action: 'consumed' };
-    }
-
-    private handleButtonInput(data: string): PopupInputResult {
-        const result = this.buttons.handleInput(data);
-        if (result.confirmed) {
-            if (this.buttons.selectedIndex === 1) {
-                this.close();
-                return { action: 'close', confirm: false };
-            }
-            this.saveCurrentElement();
-            return this.closeWithConfirm();
-        }
-        if (result.consumed) {
-            return { action: 'consumed' };
-        }
-        return { action: 'consumed' };
-    }
+    // --- Scroll / visibility ---
 
     private ensureVisible(): void {
         const displayIdx = this.cursorDisplayIndex();
@@ -498,169 +671,7 @@ export class ColorEditorPopup extends Popup {
         this.bgHexInput.resetBlink();
     }
 
-    get hasBlink(): boolean {
-        return this.focusArea === FOCUS_FG_HEX || this.focusArea === FOCUS_BG_HEX;
-    }
-
-    override renderToBuffer(theme: Theme): FrameBuffer {
-        const t = theme;
-        const bodyStyle = t.popupInfoBody.idle;
-        const inputStyle = t.popupInfoInput.idle;
-        const cursorStyle = t.popupInfoInputCursor.idle;
-        const labelStyle = t.popupInfoLabel.idle;
-
-        const totalW = POPUP_WIDTH + 2 * this.padding * 2;
-        const totalH = POPUP_HEIGHT + 2 * this.padding;
-        const boxRow = this.padding;
-        const boxCol = this.padding * 2;
-        const innerW = POPUP_WIDTH - 2;
-
-        const fb = new FrameBuffer(totalW, totalH);
-        fb.fill(0, 0, totalW, totalH, ' ', bodyStyle);
-        fb.drawBox(boxRow, boxCol, POPUP_WIDTH, POPUP_HEIGHT, bodyStyle, DBOX, 'Colors');
-
-        const listLeft = boxCol + 1;
-        const listTop = boxRow + 1;
-        const rightLeft = listLeft + LIST_WIDTH + 1;
-        const rightWidth = innerW - LIST_WIDTH - 1;
-
-        fb.write(listTop, listLeft + LIST_WIDTH, BOX.vertical.repeat(1), bodyStyle);
-        for (let r = 0; r < LIST_HEIGHT; r++) {
-            fb.write(listTop + r, listLeft + LIST_WIDTH, BOX.vertical, bodyStyle);
-        }
-
-        const visible = this.visibleElements();
-        for (let r = 0; r < LIST_HEIGHT; r++) {
-            const v = visible.find(v => v.displayIdx - this.scroll === r);
-            if (!v) {
-                fb.fill(listTop + r, listLeft, LIST_WIDTH, 1, ' ', bodyStyle);
-                continue;
-            }
-            const style = v.isCurrent && this.focusArea === FOCUS_LIST
-                ? t.popupInfoInput.idle : bodyStyle;
-            const highlightStyle = v.isCurrent ? t.popupInfoInput.idle : bodyStyle;
-            fb.fill(listTop + r, listLeft, LIST_WIDTH, 1, ' ', v.isCurrent ? highlightStyle : bodyStyle);
-            if (v.elem.isGroup) {
-                fb.write(listTop + r, listLeft, v.elem.label.slice(0, LIST_WIDTH), labelStyle);
-            } else {
-                const prefix = v.isCurrent ? '> ' : '  ';
-                const text = (prefix + v.elem.label).slice(0, LIST_WIDTH);
-                fb.write(listTop + r, listLeft, text, v.isCurrent ? highlightStyle : bodyStyle);
-            }
-        }
-
-        const stateRow = listTop;
-        const stateLabel = 'State: ';
-        fb.write(stateRow, rightLeft + 1, stateLabel, bodyStyle);
-        const idleRadio = this.editState === 'idle' ? '(o)' : '( )';
-        const selRadio = this.editState === 'selected' ? '(o)' : '( )';
-        const stateStyle = this.focusArea === FOCUS_STATE ? inputStyle : bodyStyle;
-        fb.write(stateRow, rightLeft + 1 + stateLabel.length, idleRadio + 'Idle ', stateStyle);
-        fb.write(stateRow, rightLeft + 1 + stateLabel.length + idleRadio.length + 5, selRadio + 'Selected', stateStyle);
-
-        const fgLabelRow = listTop + 2;
-        fb.write(fgLabelRow, rightLeft + 1, 'Foreground:', bodyStyle);
-        this.renderGrid(fb, listTop + 3, rightLeft + 1, this.fgGridIndex, this.focusArea === FOCUS_FG_GRID, theme);
-
-        const fgCtrlRow = listTop + 5;
-        const dfFg = this.fgGridIndex === 16 ? '<Df>' : ' Df ';
-        const dfFgStyle = this.focusArea === FOCUS_FG_GRID && this.fgGridIndex === 16 ? inputStyle : bodyStyle;
-        fb.write(fgCtrlRow, rightLeft + 1, dfFg, dfFgStyle);
-        fb.write(fgCtrlRow, rightLeft + 6, 'Hex: ', bodyStyle);
-        fb.blit(fgCtrlRow, rightLeft + 11, this.fgHexInput.renderToBuffer(inputStyle, cursorStyle, this.focusArea === FOCUS_FG_HEX));
-
-        const bgLabelRow = listTop + 7;
-        fb.write(bgLabelRow, rightLeft + 1, 'Background:', bodyStyle);
-        this.renderGrid(fb, listTop + 8, rightLeft + 1, this.bgGridIndex, this.focusArea === FOCUS_BG_GRID, theme);
-
-        const bgCtrlRow = listTop + 10;
-        const dfBg = this.bgGridIndex === 16 ? '<Df>' : ' Df ';
-        const dfBgStyle = this.focusArea === FOCUS_BG_GRID && this.bgGridIndex === 16 ? inputStyle : bodyStyle;
-        fb.write(bgCtrlRow, rightLeft + 1, dfBg, dfBgStyle);
-        fb.write(bgCtrlRow, rightLeft + 6, 'Hex: ', bodyStyle);
-        fb.blit(bgCtrlRow, rightLeft + 11, this.bgHexInput.renderToBuffer(inputStyle, cursorStyle, this.focusArea === FOCUS_BG_HEX));
-
-        const boldRow = listTop + 12;
-        const cbFocused = this.focusArea === FOCUS_BOLD;
-        const cbStyle = cbFocused ? inputStyle : bodyStyle;
-        fb.blit(boldRow, rightLeft + 1, this.boldCheckbox.renderToBuffer(bodyStyle, cbStyle, cbFocused));
-
-        const sampleRow = listTop + 14;
-        fb.write(sampleRow, rightLeft + 1, 'Sample: ', bodyStyle);
-        const sampleFg = this.getFgColor();
-        const sampleBg = this.getBgColor();
-        const sampleStyle: TextStyle = { fg: sampleFg, bg: sampleBg, bold: this.boldCheckbox.checked };
-        fb.write(sampleRow, rightLeft + 9, 'Sample text', sampleStyle);
-
-        const separatorRow = boxRow + POPUP_HEIGHT - 3;
-        fb.drawSeparator(separatorRow, boxCol, POPUP_WIDTH, bodyStyle, MBOX.vertDoubleRight, BOX.horizontal, MBOX.vertDoubleLeft);
-
-        const btnRow = boxRow + POPUP_HEIGHT - 2;
-        const btnFocused = this.focusArea === FOCUS_BUTTONS;
-        fb.blit(btnRow, boxCol + 1, this.buttons.renderToBuffer(innerW, bodyStyle, t.popupInfoButton.idle, t.popupInfoButton.selected, btnFocused));
-
-        return fb;
-    }
-
-    private renderGrid(fb: FrameBuffer, row: number, col: number, selectedIdx: number, focused: boolean, theme: Theme): void {
-        const bodyStyle = theme.popupInfoBody.idle;
-        for (let r = 0; r < 2; r++) {
-            for (let c = 0; c < 8; c++) {
-                const idx = r * 8 + c;
-                const x = col + c * 3;
-                const color = ANSI_PREVIEW_COLORS[idx];
-                const cellStyle: TextStyle = { fg: color, bg: color, bold: false };
-                const isSelected = selectedIdx === idx;
-                if (isSelected && focused) {
-                    fb.write(row + r, x, '<', bodyStyle);
-                    fb.write(row + r, x + 1, ' ', cellStyle);
-                    fb.write(row + r, x + 2, '>', bodyStyle);
-                } else if (isSelected) {
-                    fb.write(row + r, x, '[', bodyStyle);
-                    fb.write(row + r, x + 1, ' ', cellStyle);
-                    fb.write(row + r, x + 2, ']', bodyStyle);
-                } else {
-                    fb.write(row + r, x, ' ', cellStyle);
-                    fb.write(row + r, x + 1, ' ', cellStyle);
-                    fb.write(row + r, x + 2, ' ', bodyStyle);
-                }
-            }
-        }
-    }
-
-    render(rows: number, cols: number, theme: Theme): string {
-        if (!this.active) return '';
-        const fb = this.renderToBuffer(theme);
-        const baseRow = Math.floor((rows - fb.height) / 2) + 1;
-        const baseCol = Math.floor((cols - fb.width) / 2) + 1;
-        this.setScreenPosition(baseRow, baseCol, fb.width, fb.height);
-        return fb.toAnsi(this.screenRow, this.screenCol);
-    }
-
-    renderColorEditorBlink(rows: number, cols: number, theme: Theme): string {
-        if (!this.active) return '';
-        const t = theme;
-        const boxStartRow = this.screenRow + this.padding;
-        const boxStartCol = this.screenCol + this.padding * 2;
-        const listTop = boxStartRow + 1;
-        const rightLeft = boxStartCol + 1 + LIST_WIDTH + 1;
-        const inputStyle = t.popupInfoInput.idle;
-        const cursorStyle = t.popupInfoInputCursor.idle;
-
-        let out = '';
-        if (this.focusArea === FOCUS_FG_HEX) {
-            out += this.fgHexInput.renderBlink(listTop + 5, rightLeft + 11, inputStyle, cursorStyle);
-        } else if (this.focusArea === FOCUS_BG_HEX) {
-            out += this.bgHexInput.renderBlink(listTop + 10, rightLeft + 11, inputStyle, cursorStyle);
-        }
-        out += hideCursor();
-        return out;
-    }
-
-    resetColorEditorBlink(): void {
-        this.fgHexInput.resetBlink();
-        this.bgHexInput.resetBlink();
-    }
+    // --- Mouse ---
 
     override handleMouseScroll(up: boolean): PopupInputResult {
         if (this.focusArea === FOCUS_LIST) {
@@ -677,12 +688,12 @@ export class ColorEditorPopup extends Popup {
     }
 
     protected override onMouseDown(fbRow: number, fbCol: number): PopupInputResult | null {
-        const boxRow = this.padding;
-        const boxCol = this.padding * 2;
+        const boxRow = this.padV;
+        const boxCol = this.padH;
         const listTop = boxRow + 1;
         const listLeft = boxCol + 1;
         const rightLeft = listLeft + LIST_WIDTH + 1;
-        const btnRow = boxRow + POPUP_HEIGHT - 2;
+        const btnRow = boxRow + CONTENT_HEIGHT + 1 + 1;
 
         if (fbRow >= listTop && fbRow < listTop + LIST_HEIGHT && fbCol >= listLeft && fbCol < listLeft + LIST_WIDTH) {
             this.focusArea = FOCUS_LIST;
@@ -792,9 +803,9 @@ export class ColorEditorPopup extends Popup {
     }
 
     protected override hitTestButton(fbRow: number, fbCol: number): number {
-        const boxRow = this.padding;
-        const boxCol = this.padding * 2;
-        const btnRow = boxRow + POPUP_HEIGHT - 2;
+        const boxRow = this.padV;
+        const boxCol = this.padH;
+        const btnRow = boxRow + CONTENT_HEIGHT + 1 + 1;
         if (fbRow === btnRow) {
             const localCol = fbCol - boxCol - 1;
             if (localCol >= 0) {

@@ -2,10 +2,15 @@ import * as os from 'os';
 import * as path from 'path';
 import {
     enterAltScreen, leaveAltScreen, clearScreen, showCursor, hideCursor,
-    resetStyle, bgColor, enableMouse, disableMouse
+    resetStyle, bgColor, enableMouse, disableMouse,
 } from './draw';
 import { MouseEvent, parseMouseEvent } from './mouse';
 import { PanelSettings, TextStyle, matchesKeyBinding, resolveTheme } from './settings';
+import {
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_HOME_ALT,
+    KEY_END, KEY_END_ALT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_TAB, KEY_ENTER,
+    KEY_ESCAPE, KEY_DOUBLE_ESCAPE, KEY_CTRL_F1, MOUSE_SGR_PREFIX, MOUSE_X10_PREFIX,
+} from './keys';
 import { Layout, PaneGeometry, SortMode } from './types';
 import { computeLayout, describeFileError } from './helpers';
 import { Pane } from './pane';
@@ -22,6 +27,8 @@ import { ColorEditorPopup } from './colorEditorPopup';
 import { ThemePopup } from './themePopup';
 import { SortPopup, SortPopupResult } from './sortPopup';
 import { HelpPopup } from './helpPopup';
+import { UserMenuPopup, UserMenuCommand } from './userMenuPopup';
+import { UserMenuItem, SubstContext, MenuScope, isCommentLine } from './userMenu';
 import { ColorOverride, ThemeName, applyColorOverrides, themeToOverrides, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS } from './settings';
 import { TerminalBuffer } from './terminalBuffer';
 import { getCellAt } from './cellQuery';
@@ -29,6 +36,7 @@ import { TerminalArea } from './terminalArea';
 import { FKeyBar } from './fkeyBar';
 import { CommandLine } from './commandLine';
 import { isArchiveFile } from './archiveFs';
+import { QuickViewPane } from './quickViewPane';
 
 export type PanelInputResult =
     | { action: 'quit'; data?: string }
@@ -44,8 +52,6 @@ export type PanelInputResult =
     | { action: 'deleteFile'; filePath: string; toTrash: boolean; data?: string }
     | { action: 'mkdir'; cwd: string; dirName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean; data?: string }
     | { action: 'copyMove'; result: CopyMoveResult; data?: string }
-    | { action: 'quickView'; data: string; filePath: string; targetType: 'file' | 'dir'; side: 'left' | 'right' }
-    | { action: 'quickViewClose'; data: string; chdir?: string }
     | { action: 'changeTheme'; themeName: ThemeName; data?: string }
     | { action: 'saveSettings'; scope: 'user' | 'workspace'; data?: string }
     | { action: 'deleteSettings'; scope: 'user' | 'workspace'; data?: string }
@@ -59,7 +65,9 @@ export type PanelInputResult =
     | { action: 'moveFromArchive'; targetPath: string; entryPaths: string[]; archiveDir: string; data?: string }
     | { action: 'moveToArchive'; sourcePaths: string[]; archiveDir: string; data?: string }
     | { action: 'interceptF1Changed'; data: string; interceptF1: boolean }
+    | { action: 'commandPalette'; data?: string }
     | { action: 'openPrivacySettings'; data?: string }
+    | { action: 'saveUserMenu'; scope: MenuScope; items: UserMenuItem[]; data?: string }
     | { action: 'none'; data?: string };
 
 export class Panel {
@@ -84,6 +92,9 @@ export class Panel {
     themePopup: ThemePopup;
     sortPopup: SortPopup;
     helpPopup: HelpPopup;
+    userMenuPopup: UserMenuPopup;
+    userMenuItems: UserMenuItem[] = [];
+    workspaceMenuItems: UserMenuItem[] = [];
     docsDir = '';
     termBuffer: TerminalBuffer;
     private terminalArea = new TerminalArea();
@@ -92,6 +103,7 @@ export class Panel {
     inactivePaneHidden = false;
     quickViewMode = false;
     splitOffset = 0;
+    private quickViewPane = new QuickViewPane();
 
     get shellInputLen(): number { return this.commandLine.shellInputLen; }
     set shellInputLen(v: number) { this.commandLine.shellInputLen = v; }
@@ -125,6 +137,7 @@ export class Panel {
         this.themePopup = new ThemePopup();
         this.sortPopup = new SortPopup();
         this.helpPopup = new HelpPopup();
+        this.userMenuPopup = new UserMenuPopup();
         this.termBuffer = new TerminalBuffer(cols, rows);
         this.syncPopupBounds();
     }
@@ -140,7 +153,11 @@ export class Panel {
     hide(): string {
         this.visible = false;
         this.waitingMode = false;
-        this.quickViewMode = false;
+        if (this.quickViewMode) {
+            this.quickViewPane.cancelScan();
+            this.quickViewPane.clear();
+            this.quickViewMode = false;
+        }
         return disableMouse() + showCursor() + leaveAltScreen();
     }
 
@@ -161,7 +178,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup, this.helpPopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup, this.helpPopup, this.userMenuPopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -183,10 +200,6 @@ export class Panel {
     }
 
     private getLayout(): Layout {
-        if (this.quickViewMode) {
-            const pane = this.activePaneObj;
-            return computeLayout(this.rows, this.cols, this.settings.panelColumns, this.cols, pane.colCount, pane.colCount);
-        }
         return computeLayout(this.rows, this.cols, this.settings.panelColumns, this.leftWidth, this.left.colCount, this.right.colCount);
     }
 
@@ -197,7 +210,8 @@ export class Panel {
             || this.copyProgressPopup.active || this.scanProgressPopup.active
             || this.deleteProgressPopup.active || this.overwritePopup.active
             || this.colorEditorPopup.active || this.themePopup.active
-            || this.sortPopup.active || this.helpPopup.active;
+            || this.sortPopup.active || this.helpPopup.active
+            || this.userMenuPopup.active;
     }
 
     private get activePopupObj(): Popup | null {
@@ -213,6 +227,7 @@ export class Panel {
         if (this.copyMovePopup.active) return this.copyMovePopup;
         if (this.mkdirPopup.active) return this.mkdirPopup;
         if (this.drivePopup.active) return this.drivePopup;
+        if (this.userMenuPopup.active) return this.userMenuPopup;
         if (this.menuPopup.active) return this.menuPopup;
         if (this.searchPopup.active) return this.searchPopup;
         return null;
@@ -220,12 +235,6 @@ export class Panel {
 
     get activePaneObj(): Pane {
         return this.activePane === 'left' ? this.left : this.right;
-    }
-
-    getActivePaneRatio(): number {
-        const lw = this.leftWidth;
-        const activeCols = this.activePane === 'left' ? lw : this.cols - lw;
-        return (activeCols + 1) / this.cols;
     }
 
     getQuickViewTarget(): { type: 'file' | 'dir'; path: string } {
@@ -254,10 +263,15 @@ export class Panel {
     }
 
     renderClockUpdate(): string {
-        if (!this.visible || !this.settings.clockEnabled || this.hasActivePopup || this.quickViewMode) return '';
+        if (!this.visible || !this.settings.clockEnabled || this.hasActivePopup) return '';
         const layout = this.getLayout();
         const t = this.settings.theme;
         const leftIsActive = this.activePane === 'left';
+        if (this.quickViewMode) {
+            const qvGeo = leftIsActive ? layout.rightPane : layout.leftPane;
+            const cursorName = this.getQuickViewCursorName();
+            return this.quickViewPane.render(qvGeo, layout, t, true, cursorName);
+        }
         if (this.inactivePaneHidden && leftIsActive) return '';
         return this.right.render({
             geo: layout.rightPane, layout, theme: t,
@@ -318,12 +332,23 @@ export class Panel {
         return this.overwritePopup.renderOverwriteBlink(this.rows, this.cols, this.settings.theme);
     }
 
+    get isUserMenuBlinkActive(): boolean {
+        return this.userMenuPopup.active && this.userMenuPopup.hasBlink;
+    }
+
+    resetUserMenuBlink(): void {
+        this.userMenuPopup.resetUserMenuBlink();
+    }
+
+    renderUserMenuCursorBlink(): string {
+        if (!this.visible || !this.userMenuPopup.active) return '';
+        return this.userMenuPopup.renderUserMenuBlink(this.rows, this.cols, this.settings.theme);
+    }
+
     renderSearchCursorBlink(): string {
         if (!this.visible || !this.searchPopup.active) return '';
         const layout = this.getLayout();
-        const activePaneGeo = this.quickViewMode
-            ? layout.leftPane
-            : (this.activePane === 'left' ? layout.leftPane : layout.rightPane);
+        const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
         return this.searchPopup.renderBlink(layout.bottomRow, activePaneGeo.startCol, this.settings.theme);
     }
 
@@ -341,16 +366,14 @@ export class Panel {
         const pane = this.activePaneObj;
         const layout = this.getLayout();
         const listHeight = layout.listHeight;
-        const activePaneGeo = this.quickViewMode
-            ? layout.leftPane
-            : (this.activePane === 'left' ? layout.leftPane : layout.rightPane);
+        const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
         const pageCapacity = listHeight * activePaneGeo.numCols;
 
-        if (data.startsWith('\x1b[M')) {
+        if (data.startsWith(MOUSE_X10_PREFIX)) {
             return { action: 'none' };
         }
 
-        if (data.startsWith('\x1b[<')) {
+        if (data.startsWith(MOUSE_SGR_PREFIX)) {
             const mouse = parseMouseEvent(data);
             if (mouse) {
                 return this.handleMouse(mouse, layout, activePaneGeo);
@@ -409,6 +432,10 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
+        if (this.userMenuPopup.active) {
+            return this.resolveUserMenuResult(this.userMenuPopup.handleInput(data));
+        }
+
         if (this.menuPopup.active) {
             return this.resolveMenuResult(this.menuPopup.handleInput(data));
         }
@@ -449,6 +476,15 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
+        if (data === KEY_CTRL_F1) {
+            if (this.settings.interceptF1) {
+                return { action: 'commandPalette' };
+            } else {
+                this.helpPopup.openHelp(this.docsDir, this.settings.interceptF1);
+                return { action: 'redraw', data: this.render() };
+            }
+        }
+
         if (matchesKeyBinding(data, this.settings.keys.driveLeft)) {
             this.openDrivePopup('left');
             return { action: 'redraw', data: this.render() };
@@ -459,7 +495,7 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b' || data === '\x1b\x1b') {
+        if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
             return { action: 'none' };
         }
 
@@ -479,6 +515,12 @@ export class Panel {
                     }
                 },
             });
+            return { action: 'redraw', data: this.render() };
+        }
+
+        if (matchesKeyBinding(data, this.settings.keys.userMenu)) {
+            const ctx = this.buildSubstContext();
+            this.userMenuPopup.openUserMenu(this.userMenuItems, this.workspaceMenuItems, ctx);
             return { action: 'redraw', data: this.render() };
         }
 
@@ -578,26 +620,60 @@ export class Panel {
 
         if (matchesKeyBinding(data, this.settings.keys.quickView)) {
             if (this.quickViewMode) {
+                this.quickViewPane.cancelScan();
+                this.quickViewPane.clear();
                 this.quickViewMode = false;
-                return { action: 'quickViewClose', data: this.render() };
             } else {
                 this.quickViewMode = true;
                 this.inactivePaneHidden = false;
-                const side: 'left' | 'right' = this.activePane === 'left' ? 'right' : 'left';
-                const target = this.getQuickViewTarget();
-                return { action: 'quickView', data: this.render(), filePath: target.path, targetType: target.type, side };
+                this.updateQuickView();
             }
+            return { action: 'redraw', data: this.render() };
         }
 
         if (this.quickViewMode) {
             if (matchesKeyBinding(data, this.settings.keys.togglePane)) {
+                this.quickViewPane.cancelScan();
+                this.quickViewPane.clear();
                 this.quickViewMode = false;
                 this.inactivePaneHidden = !this.inactivePaneHidden;
-                return { action: 'quickViewClose', data: this.render() };
+                return { action: 'redraw', data: this.render() };
             }
             if (matchesKeyBinding(data, this.settings.keys.resizeLeft)
                 || matchesKeyBinding(data, this.settings.keys.resizeRight)) {
                 return { action: 'none' };
+            }
+            if (this.quickViewPane.focused) {
+                const contentHeight = layout.separatorRow - layout.headerRow;
+                if (data === KEY_LEFT || data === KEY_RIGHT) {
+                    if (this.quickViewPane.isTextFile) {
+                        const hDelta = data === KEY_LEFT ? -1 : 1;
+                        if (this.quickViewPane.scrollHorizontalBy(hDelta)) {
+                            return { action: 'redraw', data: this.render() };
+                        }
+                        return { action: 'none' };
+                    }
+                }
+                let delta = 0;
+                if (data === KEY_UP) delta = -1;
+                else if (data === KEY_DOWN) delta = 1;
+                else if (data === KEY_PAGE_UP || data === KEY_LEFT
+                    || data === KEY_HOME || data === KEY_HOME_ALT) delta = -contentHeight;
+                else if (data === KEY_PAGE_DOWN || data === KEY_RIGHT
+                    || data === KEY_END || data === KEY_END_ALT) delta = contentHeight;
+                else if (matchesKeyBinding(data, 'Ctrl+Home')
+                    || matchesKeyBinding(data, 'Ctrl+PageUp')) delta = -Infinity;
+                else if (matchesKeyBinding(data, 'Ctrl+End')
+                    || matchesKeyBinding(data, 'Ctrl+PageDown')) delta = Infinity;
+                if (delta !== 0) {
+                    if (data === KEY_HOME || data === KEY_HOME_ALT
+                        || data === KEY_END || data === KEY_END_ALT
+                        || delta === Infinity || delta === -Infinity) {
+                        this.quickViewPane.resetHorizontalScroll();
+                    }
+                    this.quickViewPane.scrollBy(delta, contentHeight);
+                    return { action: 'redraw', data: this.render() };
+                }
             }
         }
 
@@ -632,6 +708,8 @@ export class Panel {
 
         if (matchesKeyBinding(data, 'Ctrl+U')) {
             if (this.quickViewMode) {
+                this.quickViewPane.cancelScan();
+                this.quickViewPane.clear();
                 this.quickViewMode = false;
             }
             return this.handleMenuCommand({ type: 'swapPanels' });
@@ -906,7 +984,7 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[A') {
+        if (data === KEY_UP) {
             if (pane.cursor > 0) {
                 pane.cursor--;
                 if (pane.cursor < pane.scroll) {
@@ -916,7 +994,7 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[B') {
+        if (data === KEY_DOWN) {
             if (pane.cursor < pane.entries.length - 1) {
                 pane.cursor++;
                 if (pane.cursor >= pane.scroll + pageCapacity) {
@@ -926,7 +1004,7 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[C') {
+        if (data === KEY_RIGHT) {
             const relPos = pane.cursor - pane.scroll;
             const currentCol = Math.floor(relPos / listHeight);
 
@@ -950,7 +1028,7 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[D') {
+        if (data === KEY_LEFT) {
             const relPos = pane.cursor - pane.scroll;
             const currentCol = Math.floor(relPos / listHeight);
 
@@ -973,7 +1051,7 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[5~') {
+        if (data === KEY_PAGE_UP) {
             pane.scroll -= pageCapacity;
             pane.cursor -= pageCapacity;
             if (pane.scroll < 0) {
@@ -988,7 +1066,7 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[6~') {
+        if (data === KEY_PAGE_DOWN) {
             pane.scroll += pageCapacity;
             pane.cursor += pageCapacity;
             const maxScroll = Math.max(0, pane.entries.length - pageCapacity);
@@ -1004,13 +1082,13 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[H' || data === '\x1b[1~') {
+        if (data === KEY_HOME || data === KEY_HOME_ALT) {
             pane.cursor = 0;
             pane.scroll = 0;
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\x1b[F' || data === '\x1b[4~') {
+        if (data === KEY_END || data === KEY_END_ALT) {
             pane.cursor = Math.max(0, pane.entries.length - 1);
             if (pane.cursor >= pane.scroll + pageCapacity) {
                 pane.scroll = pane.cursor - pageCapacity + 1;
@@ -1018,17 +1096,16 @@ export class Panel {
             return { action: 'redraw', data: this.render() };
         }
 
-        if (data === '\t') {
+        if (data === KEY_TAB) {
             if (this.quickViewMode) {
-                this.quickViewMode = false;
-                this.activePane = this.activePane === 'left' ? 'right' : 'left';
-                return { action: 'quickViewClose', data: this.render(), chdir: this.activePaneObj.cwd };
+                this.quickViewPane.focused = !this.quickViewPane.focused;
+                return { action: 'redraw', data: this.render() };
             }
             this.activePane = this.activePane === 'left' ? 'right' : 'left';
             return { action: 'redraw', data: this.render(), chdir: this.activePaneObj.cwd };
         }
 
-        if (data === '\r') {
+        if (data === KEY_ENTER) {
             if (this.shellInputLen > 0) {
                 this.shellInputLen = 0;
                 return { action: 'executeCommand', data: '\r' };
@@ -1100,6 +1177,7 @@ export class Panel {
             if (popup === this.themePopup) return this.resolveThemePopupResult(result);
             if (popup === this.colorEditorPopup) return this.resolveColorEditorResult(result);
             if (popup === this.menuPopup) return this.resolveMenuResult(result);
+            if (popup === this.userMenuPopup) return this.resolveUserMenuResult(result);
             if (popup === this.copyMovePopup) return this.resolveCopyMoveResult(result);
             return this.resolvePopupResult(result);
         };
@@ -1196,6 +1274,63 @@ export class Panel {
             return this.handleMenuCommand(result.command as MenuCommand);
         }
         return { action: 'redraw', data: this.render() };
+    }
+
+    private resolveUserMenuResult(result: PopupInputResult): PanelInputResult {
+        if (result.action === 'close' && result.confirm && result.command) {
+            const cmd = result.command as UserMenuCommand;
+            switch (cmd.type) {
+                case 'execute': {
+                    const joined = cmd.commands.join('\n');
+                    return { action: 'executeCommand', data: joined + '\r' };
+                }
+                case 'saveMenu':
+                    return { action: 'saveUserMenu', scope: cmd.scope, items: cmd.items, data: this.render() };
+                case 'deleteItem': {
+                    this.confirmPopup.openWith({
+                        title: 'Delete menu item',
+                        bodyLines: ['Delete "' + cmd.itemLabel + '"?'],
+                        buttons: ['Delete', 'Cancel'],
+                        warning: true,
+                        onConfirm: (btnIdx) => {
+                            if (btnIdx === 0) {
+                                return { action: 'saveUserMenu', scope: cmd.scope, items: cmd.items };
+                            }
+                        },
+                    });
+                    return { action: 'redraw', data: this.render() };
+                }
+            }
+        }
+        return { action: 'redraw', data: this.render() };
+    }
+
+    private buildSubstContext(): SubstContext {
+        const pane = this.activePaneObj;
+        const otherPane = this.activePane === 'left' ? this.right : this.left;
+        const entry = pane.entries[pane.cursor];
+        const activeFile = (entry && entry.name !== '..') ? entry.name : '';
+        const parsed = path.parse(activeFile);
+        const passiveEntry = otherPane.entries[otherPane.cursor];
+        const passiveFile = (passiveEntry && passiveEntry.name !== '..') ? passiveEntry.name : '';
+        const selectedFiles: string[] = [];
+        for (const e of pane.entries) {
+            if (pane.selected.has(e.name)) selectedFiles.push(e.name);
+        }
+        const passiveSelectedFiles: string[] = [];
+        for (const e of otherPane.entries) {
+            if (otherPane.selected.has(e.name)) passiveSelectedFiles.push(e.name);
+        }
+        return {
+            activeCwd: pane.cwd,
+            activeFile,
+            activeFileName: parsed.name,
+            activeExtension: parsed.ext.startsWith('.') ? parsed.ext.slice(1) : parsed.ext,
+            passiveCwd: otherPane.cwd,
+            passiveFile,
+            selectedFiles,
+            passiveSelectedFiles,
+        };
     }
 
     private resolveColorEditorResult(result: PopupInputResult): PanelInputResult {
@@ -1924,16 +2059,33 @@ export class Panel {
         const out: string[] = [];
         const leftIsActive = this.activePane === 'left';
 
+        if (this.quickViewMode) {
+            this.updateQuickView();
+        }
+
         out.push(resetStyle() + bgColor(t.border.idle.bg));
         out.push(clearScreen());
 
         if (this.quickViewMode) {
-            const pane = this.activePaneObj;
-            out.push(pane.render({
-                geo: layout.leftPane, layout, theme: t,
-                isActive: true, showClock: this.settings.clockEnabled,
-                selected: pane.selected,
-            }));
+            const leftIsQV = this.activePane === 'right';
+            const qvFocused = this.quickViewPane.focused;
+            if (leftIsQV) {
+                const cursorName = this.getQuickViewCursorName();
+                out.push(this.quickViewPane.render(layout.leftPane, layout, t, false, cursorName));
+                out.push(this.right.render({
+                    geo: layout.rightPane, layout, theme: t,
+                    isActive: !qvFocused, showClock: this.settings.clockEnabled,
+                    selected: this.right.selected,
+                }));
+            } else {
+                out.push(this.left.render({
+                    geo: layout.leftPane, layout, theme: t,
+                    isActive: !qvFocused, showClock: false,
+                    selected: this.left.selected,
+                }));
+                const cursorName = this.getQuickViewCursorName();
+                out.push(this.quickViewPane.render(layout.rightPane, layout, t, this.settings.clockEnabled, cursorName));
+            }
         } else {
             const leftHidden = this.inactivePaneHidden && leftIsActive === false;
             const rightHidden = this.inactivePaneHidden && leftIsActive === true;
@@ -1999,12 +2151,13 @@ export class Panel {
             const sortGeo = this.sortPopup.targetPane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.sortPopup.render(sortGeo.startCol, sortGeo.width, t, layout.listStart, layout.listHeight));
             out.push(this.sortPopup.renderShadow(cellAt));
+        } else if (this.userMenuPopup.active) {
+            out.push(this.userMenuPopup.render(this.rows, this.cols, t));
+            out.push(this.userMenuPopup.renderShadow(cellAt));
         } else if (this.menuPopup.active) {
             out.push(this.menuPopup.render(layout.topRow, 1, t, this.cols));
         } else if (this.searchPopup.active) {
-            const activePaneGeo = this.quickViewMode
-                ? layout.leftPane
-                : (this.activePane === 'left' ? layout.leftPane : layout.rightPane);
+            const activePaneGeo = this.activePane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.searchPopup.render(layout.bottomRow, activePaneGeo.startCol, t));
             out.push(this.searchPopup.renderShadow(cellAt));
         } else if (this.copyMovePopup.active) {
@@ -2105,6 +2258,45 @@ export class Panel {
             });
         }
         return { action: 'redraw', data: this.render() };
+    }
+
+    get isQuickViewScanning(): boolean {
+        return this.quickViewMode && this.quickViewPane.isScanning;
+    }
+
+    tickQuickViewRedraw(): void {
+        this.quickViewPane.tickRedraw();
+    }
+
+    renderQuickViewUpdate(): string {
+        if (!this.visible || !this.quickViewMode) return '';
+        const layout = this.getLayout();
+        const t = this.settings.theme;
+        const leftIsActive = this.activePane === 'left';
+        const qvGeo = leftIsActive ? layout.rightPane : layout.leftPane;
+        const showClock = this.settings.clockEnabled && !leftIsActive;
+        const cursorName = this.getQuickViewCursorName();
+        return this.quickViewPane.render(qvGeo, layout, t, showClock, cursorName);
+    }
+
+    private updateQuickView(): void {
+        if (!this.quickViewMode) return;
+        const target = this.getQuickViewTarget();
+        if (target.type === 'dir') {
+            this.quickViewPane.scanDir(target.path);
+        } else {
+            const layout = this.getLayout();
+            const leftIsActive = this.activePane === 'left';
+            const qvGeo = leftIsActive ? layout.rightPane : layout.leftPane;
+            const maxWidth = qvGeo.width - 2;
+            this.quickViewPane.loadFile(target.path, maxWidth);
+        }
+    }
+
+    private getQuickViewCursorName(): string {
+        const pane = this.activePaneObj;
+        const entry = pane.entries[pane.cursor];
+        return entry ? entry.name : '';
     }
 
     private getCellAt(row: number, col: number, layout: Layout): { ch: string; style: TextStyle } {

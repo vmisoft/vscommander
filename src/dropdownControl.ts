@@ -1,6 +1,7 @@
 import { BOX } from './draw';
 import { TextStyle } from './settings';
 import { FrameBuffer } from './frameBuffer';
+import { KEY_UP, KEY_DOWN, KEY_ENTER, KEY_ESCAPE, KEY_DOUBLE_ESCAPE, KEY_SPACE, KEY_CTRL_DOWN, KEY_ALT_DOWN } from './keys';
 
 export interface DropdownOption {
     label: string;
@@ -21,32 +22,32 @@ export class DropdownControl {
 
     handleInput(data: string): boolean {
         if (this.isOpen) {
-            if (data === '\x1b[A') {
+            if (data === KEY_UP) {
                 this.highlightIndex = (this.highlightIndex - 1 + this.options.length) % this.options.length;
                 return true;
             }
-            if (data === '\x1b[B') {
+            if (data === KEY_DOWN) {
                 this.highlightIndex = (this.highlightIndex + 1) % this.options.length;
                 return true;
             }
-            if (data === '\r' || data === ' ') {
+            if (data === KEY_ENTER || data === KEY_SPACE) {
                 this.selectedIndex = this.highlightIndex;
                 this.isOpen = false;
                 return true;
             }
-            if (data === '\x1b' || data === '\x1b\x1b') {
+            if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
                 this.isOpen = false;
                 return true;
             }
             return true;
         }
 
-        if (data === ' ') {
+        if (data === KEY_SPACE) {
             this.selectedIndex = (this.selectedIndex + 1) % this.options.length;
             return true;
         }
 
-        if (data === '\x1b[1;5B' || data === '\x1b[1;3B') {
+        if (data === KEY_CTRL_DOWN || data === KEY_ALT_DOWN) {
             this.highlightIndex = this.selectedIndex;
             this.isOpen = true;
             return true;

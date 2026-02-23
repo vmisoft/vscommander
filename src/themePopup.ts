@@ -1,13 +1,18 @@
 import { DBOX, BOX, MBOX, moveTo, resetStyle } from './draw';
 import { Theme, ThemeName, PanelSettings, DEFAULT_SETTINGS, resolveTheme, ColorOverride, applyColorOverrides } from './settings';
 import { DirEntry, Layout } from './types';
-import { Popup, PopupInputResult } from './popup';
+import { PopupInputResult } from './popup';
+import { ComposedPopup } from './composedPopup';
 import { ButtonGroup } from './buttonGroup';
 import { FrameBuffer } from './frameBuffer';
 import { Pane } from './pane';
 import { ConfirmPopup } from './confirmPopup';
 import { CopyMovePopup } from './copyMovePopup';
 import { applyStyle, computePaneGeometry } from './helpers';
+import {
+    KEY_UP, KEY_DOWN, KEY_HOME, KEY_HOME_ALT, KEY_END, KEY_END_ALT,
+    KEY_TAB, KEY_SHIFT_TAB, KEY_ENTER, KEY_ESCAPE, KEY_DOUBLE_ESCAPE,
+} from './keys';
 
 interface ThemeEntry {
     displayName: string;
@@ -44,7 +49,7 @@ const MOCK_ENTRIES: DirEntry[] = [
 
 export type ThemeResultAction = 'ok' | 'edit' | 'reset';
 
-export class ThemePopup extends Popup {
+export class ThemePopup extends ComposedPopup {
     private themes: ThemeEntry[] = [];
     private cursor = 0;
     private focusArea: 0 | 1 = 0;
@@ -109,41 +114,41 @@ export class ThemePopup extends Popup {
     }
 
     handleInput(data: string): PopupInputResult {
-        if (data === '\x1b' || data === '\x1b\x1b') {
+        if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
             this.close();
             return { action: 'close', confirm: false };
         }
 
         if (this.focusArea === 0) {
-            if (data === '\x1b[A') {
+            if (data === KEY_UP) {
                 if (this.cursor > 0) {
                     this.cursor--;
                     this.selectedThemeName = this.themes[this.cursor].themeName;
                 }
                 return { action: 'consumed' };
             }
-            if (data === '\x1b[B') {
+            if (data === KEY_DOWN) {
                 if (this.cursor < this.themes.length - 1) {
                     this.cursor++;
                     this.selectedThemeName = this.themes[this.cursor].themeName;
                 }
                 return { action: 'consumed' };
             }
-            if (data === '\x1b[H' || data === '\x1b[1~') {
+            if (data === KEY_HOME || data === KEY_HOME_ALT) {
                 this.cursor = 0;
                 this.selectedThemeName = this.themes[this.cursor].themeName;
                 return { action: 'consumed' };
             }
-            if (data === '\x1b[F' || data === '\x1b[4~') {
+            if (data === KEY_END || data === KEY_END_ALT) {
                 this.cursor = this.themes.length - 1;
                 this.selectedThemeName = this.themes[this.cursor].themeName;
                 return { action: 'consumed' };
             }
-            if (data === '\t') {
+            if (data === KEY_TAB) {
                 this.focusArea = 1;
                 return { action: 'consumed' };
             }
-            if (data === '\r') {
+            if (data === KEY_ENTER) {
                 this.resultAction = 'ok';
                 this.selectedThemeName = this.themes[this.cursor].themeName;
                 this.close();
@@ -152,15 +157,15 @@ export class ThemePopup extends Popup {
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[Z') {
+        if (data === KEY_SHIFT_TAB) {
             this.focusArea = 0;
             return { action: 'consumed' };
         }
-        if (data === '\x1b[A' || data === '\x1b[B') {
+        if (data === KEY_UP || data === KEY_DOWN) {
             this.focusArea = 0;
             return this.handleInput(data);
         }
-        if (data === '\t') {
+        if (data === KEY_TAB) {
             if (this.buttonGroup.selectedIndex < this.buttonGroup.labels.length - 1) {
                 this.buttonGroup.selectedIndex++;
             } else {

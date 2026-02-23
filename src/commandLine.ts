@@ -5,6 +5,7 @@ import { applyStyle } from './helpers';
 import { TerminalBuffer } from './terminalBuffer';
 import { PanelInputResult } from './panel';
 import { SPINNER_FRAMES, CURSOR_BLOCK } from './visualPrimitives';
+import { KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_U } from './keys';
 
 export interface CommandLineContext {
     cols: number;
@@ -102,26 +103,26 @@ export class CommandLine {
     }
 
     handleInput(data: string): PanelInputResult | null {
-        if (data === '\x7f') {
+        if (data === KEY_BACKSPACE) {
             if (this.shellInputLen > 0) {
                 this.shellInputLen = Math.max(0, this.shellInputLen - 1);
-                return { action: 'input', data: '\x7f', redraw: '' };
+                return { action: 'input', data: KEY_BACKSPACE, redraw: '' };
             }
             return null;
         }
 
-        if (data === '\x03') {
+        if (data === KEY_CTRL_C) {
             if (this.shellInputLen > 0) {
                 this.shellInputLen = 0;
-                return { action: 'input', data: '\x03', redraw: '' };
+                return { action: 'input', data: KEY_CTRL_C, redraw: '' };
             }
             return null;
         }
 
-        if (data === '\x15') {
+        if (data === KEY_CTRL_U) {
             if (this.shellInputLen > 0) {
                 this.shellInputLen = 0;
-                return { action: 'input', data: '\x15', redraw: '' };
+                return { action: 'input', data: KEY_CTRL_U, redraw: '' };
             }
             return null;
         }

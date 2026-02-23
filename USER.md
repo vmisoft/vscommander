@@ -66,6 +66,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `Tab` | Switch between left and right pane |
 | `Enter` | Open selected directory / enter archive / open file in editor / execute command if text is entered |
 | `F1` | Open built-in help system |
+| `F2` | Open User Menu (configurable shell commands) |
 | `F3` | View -- highlight file in VS Code Explorer; open in system file manager if outside workspace |
 | `F4` | Open selected file in VS Code editor |
 | `F5` | Copy selected file(s) to the other pane |
@@ -77,7 +78,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `F10` | Quit VSCommander (with confirmation) |
 | `Ctrl+H` | Toggle dotfile (hidden file) visibility |
 | `Ctrl+P` | Toggle visibility of inactive pane (shows terminal beneath) |
-| `Ctrl+Q` | Quick View -- preview file under cursor in a VS Code split editor |
+| `Ctrl+Q` | Quick View -- preview file or directory under cursor in the inactive pane |
 | `Ctrl+R` | Re-read the active pane's directory |
 | `Ctrl+U` | Swap left and right pane directories |
 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Set active pane to 1, 2, or 3 columns |
@@ -116,6 +117,67 @@ Press `Alt` + any letter or number to open a search popup. The popup appears nea
 - Press `Escape` to close the popup and keep the cursor on the matched entry
 - Press `Enter` to close the popup and act on the matched entry (enter directory or open file)
 - Any navigation key (arrows, Tab, PgUp/PgDn) also closes the popup
+
+## User Menu (F2)
+
+Press `F2` to open the User Menu -- a configurable list of shell commands with hotkey navigation. The menu is stored in VS Code settings at user-level and workspace-level scopes.
+
+### Menu display
+
+Each item shows: hotkey, label, `>>` for submenus, and `(u)` or `(w)` to indicate whether it comes from User or Workspace settings.
+
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Navigate items (wraps around) |
+| `Home` / `End` | Jump to first/last item |
+| `Enter` | Execute command or enter submenu |
+| `Right` | Enter submenu |
+| `Left` | Pop back from submenu |
+| `Escape` | Close menu (or pop submenu) |
+| Hotkey character | Jump to item and execute |
+| `Shift+F2` | Cycle view filter: All -> User only -> Workspace only -> All |
+
+### In-menu editing
+
+| Key | Action |
+|-----|--------|
+| `Insert` | Create new item (choose Command or Submenu) |
+| `F4` | Edit current item |
+| `Delete` | Delete current item (with confirmation) |
+| `Ctrl+Up` | Move item up |
+| `Ctrl+Down` | Move item down |
+
+The edit form allows setting the hotkey, label, command lines (for commands), and scope (User or Workspace). Changes are saved to VS Code settings immediately.
+
+### Variable substitution
+
+Commands support variable substitution using `!` tokens:
+
+| Token | Meaning |
+|-------|---------|
+| `!.!` | Current filename with extension |
+| `!.` | Filename without extension |
+| `` !` `` | Extension only (no dot) |
+| `!\` | Current directory + trailing path separator |
+| `!#` | Passive panel filename |
+| `!#\` | Passive panel directory + trailing separator |
+| `!&` | Selected files, space-separated, double-quoted |
+| `!?title?init!` | Interactive prompt (asks for input before execution) |
+| `!!` | Literal `!` |
+
+### Example configuration
+
+Add to your VS Code settings (User or Workspace):
+
+```json
+"vscommander.userMenu": [
+    { "hotkey": "a", "label": "Compile current file", "commands": ["gcc -o !. !.!"] },
+    { "hotkey": "b", "label": "Run program", "commands": ["./!."] },
+    { "hotkey": "s", "label": "Git status", "commands": ["git status"] }
+]
+```
 
 ## Change Drive
 
@@ -446,21 +508,20 @@ Press `Ctrl+P` to hide the inactive pane and show recent terminal output in its 
 
 ## Quick View (Ctrl+Q)
 
-Press `Ctrl+Q` to enter Quick View mode. The inactive pane disappears and the active pane expands to fill the terminal width, while a VS Code split editor opens on the opposite side to preview the file under the cursor.
+Press `Ctrl+Q` to enter Quick View mode. The inactive pane is replaced with a Quick View panel that previews the file or directory under the cursor, rendered directly inside the terminal.
 
-- As you move the cursor through the file list, the split editor updates to show the currently highlighted file
-- When the cursor is on a **directory**, the split editor shows directory information: full path, number of sub-directories, number of files, and total size. An animated spinner shows during the recursive scan, which runs asynchronously and updates the display when complete
+- **File preview**: When the cursor is on a file, the Quick View panel displays the file's text content. Reading is performed asynchronously to keep the interface responsive -- an animated spinner is shown while the file loads. Binary files are displayed with non-printable characters rendered as CP437/Windows-1252 glyphs, matching Far Manager's binary display
+- **Directory info**: When the cursor is on a directory, the panel shows the folder path, link target (if the folder is a symbolic link), number of sub-directories, number of files, and total file size. A recursive scan runs asynchronously with an animated spinner; once complete, the status changes to "Scanning complete"
+- **Scrolling**: Press `Tab` to move focus to the Quick View panel -- the panel title becomes active and the file pane cursor disappears. Use `Up`/`Down` to scroll vertically by one line, `PgUp`/`PgDn` or `Home`/`End` to scroll vertically by one page, `Left`/`Right` to scroll horizontally (text files) or vertically by one page (binary files), `Ctrl+Home`/`Ctrl+End` or `Ctrl+PgUp`/`Ctrl+PgDn` to jump to the file beginning or end. Press `Tab` again to return focus to the file pane
 - When the cursor is on `..`, the last preview stays visible
-- VS Code handles all file types: text, images, binary (hex view), etc.
 
 Exiting Quick View:
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+Q` | Toggle Quick View off -- restores both panes, closes split editor |
-| `Tab` | Exit Quick View, switch to the other pane, close split editor |
-| `Ctrl+O` | Exit Quick View, hide the panel entirely, close split editor |
-| `Enter` | On a file: exit Quick View, close split, open file normally |
+| `Ctrl+Q` | Toggle Quick View off -- restores both panes |
+| `Ctrl+O` | Exit Quick View, hide the panel entirely |
+| `Enter` | On a file: exit Quick View, open file normally |
 
 While in Quick View mode, `Ctrl+P` (toggle pane), `Ctrl+Left`, and `Ctrl+Right` (resize) are disabled. `Ctrl+U` (swap panels) exits Quick View first, then swaps.
 
@@ -585,7 +646,7 @@ Every panel action can be remapped to a different key. Valid key names include `
 | `vscommander.keyDetach` | string | `Alt+Enter` | Detach/attach fullscreen window |
 | `vscommander.keyResizeLeft` | string | `Ctrl+Left` | Move pane border left |
 | `vscommander.keyResizeRight` | string | `Ctrl+Right` | Move pane border right |
-| `vscommander.keyQuickView` | string | `Ctrl+Q` | Quick View (preview file in split editor) |
+| `vscommander.keyQuickView` | string | `Ctrl+Q` | Quick View (preview in inactive pane) |
 
 When an action is bound to an F-key (F1-F10), its label appears in the function key bar at the corresponding position.
 

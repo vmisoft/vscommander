@@ -37,14 +37,17 @@ export function getCellAt(
         }
     }
 
+    if (ctx.quickViewMode) {
+        const qvGeo = leftIsActive ? layout.rightPane : layout.leftPane;
+        if (col >= qvGeo.startCol && col < qvGeo.startCol + qvGeo.width) {
+            return getQuickViewCellAt(row, col, layout, qvGeo, t);
+        }
+    }
+
     let pane: Pane;
     let geo: PaneGeometry;
     let isActive: boolean;
-    if (ctx.quickViewMode) {
-        pane = ctx.activePaneObj;
-        geo = layout.leftPane;
-        isActive = true;
-    } else if (col <= layout.leftPane.startCol + layout.leftPane.width - 1) {
+    if (col <= layout.leftPane.startCol + layout.leftPane.width - 1) {
         pane = ctx.left;
         geo = layout.leftPane;
         isActive = leftIsActive;
@@ -54,6 +57,51 @@ export function getCellAt(
         isActive = !leftIsActive;
     }
 
+    return getPaneCellAt(row, col, layout, geo, pane, isActive, t);
+}
+
+function getQuickViewCellAt(
+    row: number, col: number, layout: Layout,
+    geo: PaneGeometry, t: Theme,
+): { ch: string; style: TextStyle } {
+    const border: TextStyle = t.border.idle;
+    const leftEdge = geo.startCol;
+    const rightEdge = geo.startCol + geo.width - 1;
+
+    if (row === layout.topRow) {
+        if (col === leftEdge) return { ch: DBOX.topLeft, style: border };
+        if (col === rightEdge) return { ch: DBOX.topRight, style: border };
+        return { ch: DBOX.horizontal, style: border };
+    }
+
+    if (row === layout.bottomRow) {
+        if (col === leftEdge) return { ch: DBOX.bottomLeft, style: border };
+        if (col === rightEdge) return { ch: DBOX.bottomRight, style: border };
+        return { ch: DBOX.horizontal, style: border };
+    }
+
+    if (row === layout.separatorRow) {
+        if (col === leftEdge) return { ch: MBOX.vertDoubleRight, style: border };
+        if (col === rightEdge) return { ch: MBOX.vertDoubleLeft, style: border };
+        return { ch: BOX.horizontal, style: border };
+    }
+
+    if (col === leftEdge || col === rightEdge) {
+        return { ch: DBOX.vertical, style: border };
+    }
+
+    if (row === layout.infoRow) {
+        return { ch: ' ', style: t.info.idle };
+    }
+
+    return { ch: ' ', style: border };
+}
+
+function getPaneCellAt(
+    row: number, col: number, layout: Layout,
+    geo: PaneGeometry, pane: Pane, isActive: boolean, t: Theme,
+): { ch: string; style: TextStyle } {
+    const border: TextStyle = t.border.idle;
     const leftEdge = geo.startCol;
     const rightEdge = geo.startCol + geo.width - 1;
 

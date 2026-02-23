@@ -126,7 +126,9 @@ F9 > Options > Save settings. Never auto-persist settings changes.
 
 ### User Documentation (MANDATORY)
 
-`USER.md` at the project root is the user-facing guide. **Every feature change must update USER.md** — new keybindings, new commands, new panel behaviors, changed defaults. If you add it to the code, add it to USER.md.
+`USER.md` at the project root is the user-facing guide. 
+`docs/` at the project root is the directory containing grouped by functionality articles in depth with examples. This is the source for the built-in help menu. If the documentation is updated here it should be updated in the F1 (help) menu too.
+**Every feature change must update USER.md and create a new document or update an existing one in in docs/** — new keybindings, new commands, new panel behaviors, changed defaults. If you add it to the code, update the documentation.
 
 ### Readme file (MANDATORY)
 

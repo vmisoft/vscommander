@@ -1,5 +1,6 @@
 import { TextStyle } from './settings';
 import { FrameBuffer } from './frameBuffer';
+import { KEY_SPACE } from './keys';
 
 export class CheckboxControl {
     checked: boolean;
@@ -17,7 +18,7 @@ export class CheckboxControl {
     }
 
     handleInput(data: string): boolean {
-        if (data === ' ') {
+        if (data === KEY_SPACE) {
             this.toggle();
             return true;
         }

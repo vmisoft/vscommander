@@ -1,9 +1,14 @@
 import { DBOX, MBOX, BOX } from './draw';
 import { Theme, PanelSettings } from './settings';
 import { SortMode } from './types';
-import { Popup, PopupInputResult } from './popup';
+import { PopupInputResult } from './popup';
+import { ComposedPopup } from './composedPopup';
 import { FrameBuffer } from './frameBuffer';
 import { CHECK_MARK } from './visualPrimitives';
+import {
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_HOME_ALT,
+    KEY_END, KEY_END_ALT, KEY_ENTER, KEY_ESCAPE, KEY_DOUBLE_ESCAPE,
+} from './keys';
 
 export interface DropdownItem {
     type: 'item' | 'separator';
@@ -49,7 +54,7 @@ export type MenuCommand =
     | { type: 'deleteSettings' }
     | { type: 'resetAllSettings' };
 
-export class MenuPopup extends Popup {
+export class MenuPopup extends ComposedPopup {
     private menus: MenuBarEntry[] = [];
     private dropdowns: DropdownItem[][] = [];
     selectedMenu = 0;
@@ -147,7 +152,7 @@ export class MenuPopup extends Popup {
     }
 
     handleInput(data: string): PopupInputResult {
-        if (data === '\x1b' || data === '\x1b\x1b') {
+        if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
             if (this.dropdownOpen) {
                 this.dropdownOpen = false;
                 return { action: 'consumed' };
@@ -156,32 +161,32 @@ export class MenuPopup extends Popup {
             return { action: 'close', confirm: false };
         }
 
-        if (data === '\x1b[D') {
+        if (data === KEY_LEFT) {
             this.selectedMenu = (this.selectedMenu - 1 + this.menus.length) % this.menus.length;
             this.selectedItem = 0;
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[C') {
+        if (data === KEY_RIGHT) {
             this.selectedMenu = (this.selectedMenu + 1) % this.menus.length;
             this.selectedItem = 0;
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[B' || data === '\r') {
+        if (data === KEY_DOWN || data === KEY_ENTER) {
             if (!this.dropdownOpen) {
                 this.dropdownOpen = true;
                 this.selectedItem = this.firstSelectableItem();
                 return { action: 'consumed' };
             }
-            if (data === '\x1b[B') {
+            if (data === KEY_DOWN) {
                 this.selectedItem = this.nextSelectableItem(1);
                 return { action: 'consumed' };
             }
             return this.activateCurrentItem();
         }
 
-        if (data === '\x1b[A') {
+        if (data === KEY_UP) {
             if (this.dropdownOpen) {
                 this.selectedItem = this.nextSelectableItem(-1);
                 return { action: 'consumed' };
@@ -189,7 +194,7 @@ export class MenuPopup extends Popup {
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[H' || data === '\x1b[1~') {
+        if (data === KEY_HOME || data === KEY_HOME_ALT) {
             if (this.dropdownOpen) {
                 this.selectedItem = this.firstSelectableItem();
             } else {
@@ -198,7 +203,7 @@ export class MenuPopup extends Popup {
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[F' || data === '\x1b[4~') {
+        if (data === KEY_END || data === KEY_END_ALT) {
             if (this.dropdownOpen) {
                 this.selectedItem = this.lastSelectableItem();
             } else {

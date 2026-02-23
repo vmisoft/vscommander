@@ -2,6 +2,10 @@ import { moveTo, resetStyle } from './draw';
 import { PanelSettings, KeyBindings, getFKeyNumber } from './settings';
 import { Layout } from './types';
 import { applyStyle } from './helpers';
+import {
+    KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6,
+    KEY_F7, KEY_F8, KEY_F9, KEY_F10,
+} from './keys';
 
 export class FKeyBar {
     render(layout: Layout, cols: number, settings: PanelSettings): string {
@@ -9,8 +13,10 @@ export class FKeyBar {
         const t = settings.theme;
         const out: string[] = [];
 
+        const helpLabel = settings.interceptF1 ? 'Help' : 'Cmd Plt';
         const actionSlots: { action: keyof KeyBindings; label: string }[] = [
-            { action: 'help', label: 'Help' },
+            { action: 'help', label: helpLabel },
+            { action: 'userMenu', label: 'Menu' },
             { action: 'edit', label: 'Edit' },
             { action: 'copy', label: 'Copy' },
             { action: 'move', label: 'Move' },
@@ -20,7 +26,7 @@ export class FKeyBar {
             { action: 'quit', label: 'Quit' },
         ];
         const defaultLabels: Record<number, string> = {
-            2: 'Menu', 3: 'View',
+            3: 'View',
         };
         const keys: { num: string; label: string; inactive: boolean }[] = [];
         for (let i = 1; i <= 10; i++) {
@@ -69,9 +75,9 @@ export class FKeyBar {
         const slot = Math.min(9, Math.floor((col - 1) / slotWidth));
         const fkeyNum = slot + 1;
         const fkeySeqs: Record<number, string> = {
-            1: '\x1bOP', 2: '\x1bOQ', 3: '\x1bOR', 4: '\x1bOS',
-            5: '\x1b[15~', 6: '\x1b[17~', 7: '\x1b[18~', 8: '\x1b[19~',
-            9: '\x1b[20~', 10: '\x1b[21~',
+            1: KEY_F1, 2: KEY_F2, 3: KEY_F3, 4: KEY_F4,
+            5: KEY_F5, 6: KEY_F6, 7: KEY_F7, 8: KEY_F8,
+            9: KEY_F9, 10: KEY_F10,
         };
         return fkeySeqs[fkeyNum] || null;
     }

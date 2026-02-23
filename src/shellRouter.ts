@@ -1,16 +1,17 @@
 import * as os from 'os';
 import { ShellProxy } from './shell';
+import { KEY_ENTER, KEY_BACKSPACE, KEY_CTRL_C, KEY_CTRL_U } from './keys';
 
 export class ShellRouter {
     shellOutputBuffer: string[] = [];
     cdSuppressUntil = 0;
 
     trackInputLen(data: string, panel: { shellInputLen: number }): void {
-        if (data === '\r') {
+        if (data === KEY_ENTER) {
             panel.shellInputLen = 0;
-        } else if (data === '\x7f') {
+        } else if (data === KEY_BACKSPACE) {
             panel.shellInputLen = Math.max(0, panel.shellInputLen - 1);
-        } else if (data === '\x03' || data === '\x15') {
+        } else if (data === KEY_CTRL_C || data === KEY_CTRL_U) {
             panel.shellInputLen = 0;
         } else if (data.length === 1 && data.charCodeAt(0) >= 0x20) {
             panel.shellInputLen++;

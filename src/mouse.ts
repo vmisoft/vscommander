@@ -1,3 +1,5 @@
+import { MOUSE_SGR_PREFIX } from './keys';
+
 export interface MouseEvent {
     button: number;
     col: number;
@@ -7,7 +9,7 @@ export interface MouseEvent {
 }
 
 export function parseMouseEvent(data: string): MouseEvent | null {
-    if (!data.startsWith('\x1b[<')) return null;
+    if (!data.startsWith(MOUSE_SGR_PREFIX)) return null;
     const tail = data.slice(3);
     const terminator = tail[tail.length - 1];
     if (terminator !== 'M' && terminator !== 'm') return null;

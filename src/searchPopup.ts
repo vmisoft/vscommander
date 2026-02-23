@@ -1,69 +1,92 @@
-import { hideCursor, DBOX } from './draw';
 import { Theme } from './settings';
 import { DirEntry } from './types';
-import { Popup, PopupInputResult } from './popup';
+import { PopupInputResult } from './popup';
+import { ComposedPopup } from './composedPopup';
+import { searchFormTheme } from './formView';
 import { InputControl } from './inputControl';
-import { FrameBuffer } from './frameBuffer';
+import { KEY_ESCAPE, KEY_DOUBLE_ESCAPE, KEY_ENTER, KEY_BACKSPACE } from './keys';
 
 const POPUP_WIDTH = 20;
 const INPUT_WIDTH = POPUP_WIDTH - 4;
 const POPUP_COL_OFFSET = 8;
 
-export class SearchPopup extends Popup {
-    input: InputControl;
+export class SearchPopup extends ComposedPopup {
     lastMatchIndex = -1;
+    override padding = 0;
+    private entries: DirEntry[] = [];
 
     constructor() {
         super();
-        this.padding = 0;
-        this.input = new InputControl(INPUT_WIDTH);
     }
 
     get buffer(): string {
-        return this.input.buffer;
+        if (!this.activeView) return '';
+        return this.activeView.input('search').buffer;
     }
 
     get cursorVisible(): boolean {
-        return this.input.cursorVisible;
+        if (!this.activeView) return false;
+        return this.activeView.input('search').cursorVisible;
     }
 
     set cursorVisible(v: boolean) {
-        this.input.cursorVisible = v;
+        if (this.activeView) this.activeView.input('search').cursorVisible = v;
+    }
+
+    private get inputCtrl(): InputControl | null {
+        if (!this.activeView) return null;
+        return this.activeView.input('search');
     }
 
     override open(): void {
-        super.open();
-        this.input.reset('');
         this.lastMatchIndex = -1;
+
+        const view = this.createView('Search', undefined, searchFormTheme);
+        view.minWidth = POPUP_WIDTH;
+        view.addInput('search', INPUT_WIDTH);
+
+        view.onInput = (data) => this.handleSearchInput(data);
+
+        this.setActiveView(view);
+        super.open();
     }
 
     openWithChar(initialChar: string): void {
         this.open();
-        this.input.reset(initialChar);
+        if (this.inputCtrl) this.inputCtrl.reset(initialChar);
     }
 
     close(): void {
+        if (this.inputCtrl) this.inputCtrl.reset('');
         super.close();
-        this.input.reset('');
     }
 
-    handleInput(data: string, entries: DirEntry[]): PopupInputResult {
-        if (data === '\x1b' || data === '\x1b\x1b') {
+    handleInput(data: string, entries?: DirEntry[]): PopupInputResult {
+        if (entries) this.entries = entries;
+        if (!this.activeView) return { action: 'consumed' };
+        return this.activeView.handleInput(data);
+    }
+
+    private handleSearchInput(data: string): PopupInputResult {
+        const input = this.inputCtrl;
+        if (!input) return { action: 'consumed' };
+
+        if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
             this.close();
             return { action: 'close', confirm: false };
         }
 
-        if (data === '\r') {
+        if (data === KEY_ENTER) {
             this.close();
             return { action: 'close', confirm: true };
         }
 
-        if (data === '\x7f') {
-            if (this.input.buffer.length > 0) {
-                this.input.buffer = this.input.buffer.slice(0, -1);
-                this.input.cursorPos = this.input.buffer.length;
-                this.lastMatchIndex = this.input.buffer.length > 0
-                    ? SearchPopup.findPrefixMatch(entries, this.input.buffer)
+        if (data === KEY_BACKSPACE) {
+            if (input.buffer.length > 0) {
+                input.buffer = input.buffer.slice(0, -1);
+                input.cursorPos = input.buffer.length;
+                this.lastMatchIndex = input.buffer.length > 0
+                    ? SearchPopup.findPrefixMatch(this.entries, input.buffer)
                     : -1;
             }
             return { action: 'consumed' };
@@ -76,10 +99,10 @@ export class SearchPopup extends Popup {
             ch = data[1];
         }
         if (ch) {
-            const candidate = this.input.buffer + ch;
-            const matchIdx = SearchPopup.findPrefixMatch(entries, candidate);
+            const candidate = input.buffer + ch;
+            const matchIdx = SearchPopup.findPrefixMatch(this.entries, candidate);
             if (matchIdx >= 0) {
-                this.input.insert(ch);
+                input.insert(ch);
                 this.lastMatchIndex = matchIdx;
                 return { action: 'consumed' };
             }
@@ -91,22 +114,14 @@ export class SearchPopup extends Popup {
         return { action: 'passthrough' };
     }
 
-    override renderToBuffer(theme: Theme): FrameBuffer {
-        const t = theme;
-        const bodyStyle = t.searchBody.idle;
-        const fb = new FrameBuffer(POPUP_WIDTH, 3);
-        fb.drawBox(0, 0, POPUP_WIDTH, 3, bodyStyle, DBOX, 'Search');
-        fb.blit(1, 2, this.input.renderToBuffer(t.searchInput.idle, t.searchCursor.idle, true));
-        return fb;
-    }
-
     protected override onMouseDown(_fbRow: number, _fbCol: number): PopupInputResult | null {
         return null;
     }
 
-    render(anchorRow: number, anchorCol: number, theme: Theme): string {
+    override render(anchorRow: number, anchorCol: number, theme: Theme): string {
         if (!this.active) return '';
         const fb = this.renderToBuffer(theme);
+        if (fb.width === 0 || fb.height === 0) return '';
         const baseCol = anchorCol + POPUP_COL_OFFSET;
         this.setScreenPosition(anchorRow, baseCol, fb.width, fb.height);
         return fb.toAnsi(this.screenRow, this.screenCol);
@@ -117,17 +132,11 @@ export class SearchPopup extends Popup {
     }
 
     renderBlink(anchorRow: number, anchorCol: number, theme: Theme): string {
-        if (!this.active) return '';
-
-        const t = theme;
-
-        let out = this.input.renderBlink(
-            this.screenRow + 1, this.screenCol + 2,
-            t.searchInput.idle, t.searchCursor.idle,
+        if (!this.active || !this.activeView) return '';
+        return this.activeView.renderBlink(
+            this.screenRow, this.screenCol,
+            this.padH, this.padV, theme,
         );
-
-        out += hideCursor();
-        return out;
     }
 
     static findPrefixMatch(entries: DirEntry[], prefix: string): number {

@@ -4,10 +4,16 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { Theme, PanelSettings } from './settings';
 import { DriveEntry } from './types';
-import { Popup, PopupInputResult } from './popup';
+import { PopupInputResult } from './popup';
+import { ComposedPopup } from './composedPopup';
 import { formatSizeHuman } from './helpers';
 import { PopupTable, PopupTableStyles, TableSection, TableRow } from './popupTable';
 import { FrameBuffer } from './frameBuffer';
+import {
+    KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_HOME_ALT,
+    KEY_END, KEY_END_ALT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_ENTER,
+    KEY_ESCAPE, KEY_DOUBLE_ESCAPE,
+} from './keys';
 
 const VIRTUAL_FS_TYPES = new Set([
     'tmpfs', 'devtmpfs', 'proc', 'sysfs', 'devpts', 'securityfs',
@@ -18,7 +24,7 @@ const VIRTUAL_FS_TYPES = new Set([
 
 const FILTERED_MOUNT_PREFIXES = ['/snap/', '/run/', '/sys/', '/proc/'];
 
-export class DrivePopup extends Popup {
+export class DrivePopup extends ComposedPopup {
     targetPane: 'left' | 'right' = 'left';
     entries: DriveEntry[] = [];
     cursor = 0;
@@ -70,41 +76,41 @@ export class DrivePopup extends Popup {
     }
 
     handleInput(data: string): PopupInputResult {
-        if (data === '\x1b' || data === '\x1b\x1b') {
+        if (data === KEY_ESCAPE || data === KEY_DOUBLE_ESCAPE) {
             this.close();
             return { action: 'close', confirm: false };
         }
 
-        if (data === '\r') {
+        if (data === KEY_ENTER) {
             return this.closeWithConfirm();
         }
 
-        if (data === '\x1b[A' || data === '\x1b[D') {
+        if (data === KEY_UP || data === KEY_LEFT) {
             if (this.cursor > 0) this.cursor--;
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[B' || data === '\x1b[C') {
+        if (data === KEY_DOWN || data === KEY_RIGHT) {
             if (this.cursor < this.entries.length - 1) this.cursor++;
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[H' || data === '\x1b[1~') {
+        if (data === KEY_HOME || data === KEY_HOME_ALT) {
             this.cursor = 0;
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[F' || data === '\x1b[4~') {
+        if (data === KEY_END || data === KEY_END_ALT) {
             this.cursor = Math.max(0, this.entries.length - 1);
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[5~') {
+        if (data === KEY_PAGE_UP) {
             this.cursor = 0;
             return { action: 'consumed' };
         }
 
-        if (data === '\x1b[6~') {
+        if (data === KEY_PAGE_DOWN) {
             this.cursor = Math.max(0, this.entries.length - 1);
             return { action: 'consumed' };
         }

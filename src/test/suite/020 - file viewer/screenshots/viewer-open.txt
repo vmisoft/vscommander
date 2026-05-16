@@ -1,0 +1,30 @@
+viewme.txt                                                          │t│UTF-8│        50│Col   0│100%
+Viewer line one                                                                                     
+Viewer line two                                                                                     
+Viewer line three                                                                                   
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ 1Help     2Wrap     3Quit     4Hex      5         6Edit     7Search   8UTF-8    9         10Quit   

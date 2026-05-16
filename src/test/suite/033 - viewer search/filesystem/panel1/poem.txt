@@ -1,0 +1,4 @@
+Roses are red
+Violets are blue
+Search finds this line
+And one more line

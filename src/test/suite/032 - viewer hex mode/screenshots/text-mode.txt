@@ -1,0 +1,30 @@
+data.txt                                                            │t│UTF-8│        19│Col   0│100%
+Hex view test 0123                                                                                  
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ 1Help     2Wrap     3Quit     4Hex      5         6Edit     7Search   8UTF-8    9         10Quit   

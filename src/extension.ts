@@ -154,12 +154,14 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private configListener: vscode.Disposable | undefined;
     private suppressConfigReload = false;
     private extensionPath: string;
+    private testConfig: TestConfig | undefined;
     private deleteErrorResolve: ((action: DeleteErrorAction) => void) | null = null;
     private mkdirErrorResolve: ((action: MkdirErrorAction) => void) | null = null;
 
-    constructor(cwd: string, extensionPath: string) {
+    constructor(cwd: string, extensionPath: string, testConfig?: TestConfig) {
         this.cwd = cwd;
         this.extensionPath = extensionPath;
+        this.testConfig = testConfig;
 
         this.themeListener = vscode.window.onDidChangeActiveColorTheme(() => {
             if (!this.panel) return;
@@ -194,12 +196,24 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
             this.cols = initialDimensions.columns;
             this.rows = initialDimensions.rows;
         }
+        // Test mode pins dimensions so screenshots are byte-identical
+        // regardless of the host's window size, font, or DPI.
+        if (this.testConfig?.cols && this.testConfig?.rows) {
+            this.cols = this.testConfig.cols;
+            this.rows = this.testConfig.rows;
+        }
 
         const settings = readSettings();
+        if (this.testConfig?.settings) {
+            Object.assign(settings, this.testConfig.settings);
+        }
         this.panel = new Panel(this.cols, this.rows, this.cwd, settings);
         this.panel.docsDir = path.join(this.extensionPath, 'docs');
-        this.panel.userMenuItems = readUserMenuItems('user');
+        this.panel.userMenuItems = this.testConfig?.userMenuItems ?? readUserMenuItems('user');
         this.panel.workspaceMenuItems = readUserMenuItems('workspace');
+        if (this.testConfig?.rightCwd) {
+            this.panel.right.cwd = this.testConfig.rightCwd;
+        }
 
         this.startClockTimer();
         this.restartCmdBlinkTimer();
@@ -284,6 +298,14 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         this.stopCommandPoll();
         this.shell?.kill();
         vscode.commands.executeCommand('setContext', 'vscommander.panelVisible', false);
+    }
+
+    getScreen(): { cols: number; rows: number; data: string } {
+        return {
+            cols: this.cols,
+            rows: this.rows,
+            data: this.panel ? this.panel.redraw() : '',
+        };
     }
 
     handleInput(data: string): void {
@@ -557,6 +579,10 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 
 
     setDimensions(dimensions: vscode.TerminalDimensions): void {
+        // Test mode keeps the pinned size; ignore host-driven resizes.
+        if (this.testConfig?.cols && this.testConfig?.rows) {
+            return;
+        }
         this.cols = dimensions.columns;
         this.rows = dimensions.rows;
         this.shell?.resize(this.cols, this.rows);
@@ -1230,6 +1256,46 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
 let activeTerminal: VSCommanderTerminal | undefined;
 let activeVscodeTerminal: vscode.Terminal | undefined;
 
+// Test-only configuration injected by the integration test harness.
+// cols/rows pin the panel size so the screenshot grid is a fixed shape;
+// machine-specific content (cwd, clock, dates) is handled by the reference
+// screenshots' '?' wildcards rather than by overriding the render.
+interface TestConfig {
+    rightCwd?: string;
+    settings?: Record<string, unknown>;
+    cols?: number;
+    rows?: number;
+    userMenuItems?: UserMenuItem[];
+}
+
+function openVSCommanderTerminal(extensionPath: string, leftCwd: string, testConfig?: TestConfig): vscode.Terminal {
+    const pty = new VSCommanderTerminal(leftCwd, extensionPath, testConfig);
+    activeTerminal = pty;
+
+    const terminal = vscode.window.createTerminal({
+        name: 'VSCommander',
+        pty,
+        location: vscode.TerminalLocation.Editor,
+        iconPath: new vscode.ThemeIcon('preview'),
+    });
+    activeVscodeTerminal = terminal;
+    terminal.show();
+    const listener = vscode.window.onDidChangeActiveTerminal((t) => {
+        if (t === terminal) {
+            listener.dispose();
+            vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
+            vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+        }
+    });
+    // Fallback if the event already fired before the listener was set up
+    if (vscode.window.activeTerminal === terminal) {
+        listener.dispose();
+        vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
+        vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    }
+    return terminal;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     log.init();
     const initSettings = readSettings();
@@ -1240,31 +1306,7 @@ export function activate(context: vscode.ExtensionContext) {
     const openCmd = vscode.commands.registerCommand('vscommander.open', () => {
         const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
             || os.homedir();
-
-        const pty = new VSCommanderTerminal(cwd, context.extensionPath);
-        activeTerminal = pty;
-
-        const terminal = vscode.window.createTerminal({
-            name: 'VSCommander',
-            pty,
-            location: vscode.TerminalLocation.Editor,
-            iconPath: new vscode.ThemeIcon('preview'),
-        });
-        activeVscodeTerminal = terminal;
-        terminal.show();
-        const listener = vscode.window.onDidChangeActiveTerminal((t) => {
-            if (t === terminal) {
-                listener.dispose();
-                vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
-                vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-            }
-        });
-        // Fallback if the event already fired before the listener was set up
-        if (vscode.window.activeTerminal === terminal) {
-            listener.dispose();
-            vscode.commands.executeCommand('workbench.action.unlockEditorGroup');
-            vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
-        }
+        openVSCommanderTerminal(context.extensionPath, cwd);
     });
 
     const toggleCmd = vscode.commands.registerCommand('vscommander.toggle', () => {
@@ -1308,6 +1350,35 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(openCmd, toggleCmd, quickViewCmd, togglePaneCmd, sidebarTree, sidebarVisibility, terminalFocusListener);
+
+    // Test harness lifecycle: track the terminal opened for the current test
+    // so it can be torn down before the next one (see harness.ts).
+    let testTerminal: vscode.Terminal | undefined;
+
+    return {
+        getActiveTerminal: () => activeTerminal,
+        openTest: (opts: {
+            leftCwd: string;
+            rightCwd: string;
+            settings?: Record<string, unknown>;
+            cols?: number;
+            rows?: number;
+            userMenuItems?: UserMenuItem[];
+        }) => {
+            testTerminal = openVSCommanderTerminal(context.extensionPath, opts.leftCwd, {
+                rightCwd: opts.rightCwd,
+                settings: opts.settings,
+                cols: opts.cols,
+                rows: opts.rows,
+                userMenuItems: opts.userMenuItems,
+            });
+        },
+        disposeTest: () => {
+            testTerminal?.dispose();
+            testTerminal = undefined;
+            activeTerminal = undefined;
+        },
+    };
 }
 
 export function deactivate() {

@@ -1,0 +1,30 @@
+poem.txt                                                            │t│UTF-8│        72│Col   0│100%
+Roses are red                                                                                       
+Violets are blue                                                                                    
+Search finds this line                                                                              
+And one more line                                                                                   
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                    ╔═════════════════════════ Search ═════════════════════════╗                    
+                    ║ Search for:                                              ║                    
+                    ║ Search|                                                  ║                    
+                    ╟──────────────────────────────────────────────────────────╢                    
+                    ║ [ ] Case sensitive                                       ║                    
+                    ║ [ ] Regular expression                                   ║                    
+                    ║ [ ] Whole words                                          ║                    
+                    ║ [ ] Hex search                                           ║                    
+                    ╟──────────────────────────────────────────────────────────╢                    
+                    ║               { Prev } [ Next ] [ Cancel ]               ║                    
+                    ╚══════════════════════════════════════════════════════════╝                    
+                                                                                                    
+                        │                        ║║                       │                         
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+ 1Help     2Wrap     3Quit     4Hex      5         6Edit     7Search   8UTF-8    9         10Quit   

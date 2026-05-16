@@ -1,0 +1,30 @@
+╔????????????????????????????????????????????????╗╔????????????????????????????????????????????????╗
+║n                                                                                                 ║
+║..        ╔═══════════════════════════════════ Help ═══════════════════════════════════╗          ║
+║          ║  > Panel Layout                                                            ║          ║
+║          ║    Keyboard Reference                                                      ║          ║
+║          ║    File Selection                                                          ║          ║
+║          ║    Quick Search                                                            ║          ║
+║          ║    User Menu                                                               ║          ║
+║          ║    Change Drive                                                            ║          ║
+║          ║    Copy Files                                                              ║          ║
+║          ║    Delete Files                                                            ║          ║
+║          ║    Make Directory                                                          ║          ║
+║          ║    Menus and Sorting                                                       ║          ║
+║          ║    Command Line                                                            ║          ║
+║          ║    Internal Viewer                                                         ║          ║
+║          ║    Quick View                                                              ║          ║
+║          ║    Archive Navigation                                                      ║          ║
+║          ║    Settings and Themes                                                     ║          ║
+║          ║    Mouse Interactions                                                      ║          ║
+║          ║                                                                            ║          ║
+║          ║  [ ] Intercept F1 key to show this window                                  ║          ║
+║          ║                                                                            ║          ║
+║          ║                                                                            ║          ║
+║          ║                                                                            ║          ║
+║          ║                                                                            ║          ║
+╟────────  ║                                                                            ║  ────────╢
+║..        ║                                                                            ║     <DIR>║
+╚════════  ╚════════════════════════════════════════════════════════════════════════════╝  ════════╝
+????????????????????????????????????????????????????????????????????????????????????????????????????
+ 1Cmd Plt                                                                                    Quit   

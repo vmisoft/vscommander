@@ -27,7 +27,26 @@ npm run bundle         # esbuild production bundle (single minified file)
 npm run bundle:watch   # esbuild watch mode
 npm run typecheck      # tsc --noEmit (type checking only)
 npm run package        # bundle + vsce package (produces .vsix)
+npm test               # integration test suite (see Testing below)
 ```
+
+## Testing
+
+Integration tests live in `src/test/` and run the real extension inside a
+headless VS Code via `@vscode/test-electron` + Mocha.
+
+- Each test is a directory `src/test/suite/nnn - description/` containing
+  `test.ts`, an optional `filesystem/` fixture (`panel1/`, `panel2/`,
+  `settings.json` — all optional), and `screenshots/` reference files.
+- `Harness` (`src/test/suite/harness.ts`) drives a live panel: it copies the
+  fixture to a temp sandbox, opens the panel at a pinned 100x30 size, sends
+  keyboard/mouse input, and captures the panel's render as a text grid.
+- `expectScreenshot(name)` compares the panel against a reference file where
+  `?` matches any character (volatile cells — paths, clock, dates, the shell
+  command line — are auto-masked). Regenerate references with
+  `UPDATE_SCREENSHOTS=1 npm test`.
+- Tests validate both the UI (screenshots) and filesystem side effects.
+- Every new feature should get a `nnn - description/` test directory.
 
 Press F5 in VS Code to launch the Extension Development Host. Run "VSCommander: Open Terminal" from the command palette, then Ctrl+O to toggle the panel.
 

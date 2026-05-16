@@ -1,0 +1,38 @@
+[96;44m╔═══════════[30;46m C:\Temp\far-mkdir-spec\sandbox [96;44m══════════╗╔═══════════ C:\Temp\far-mkdir-spec\sandbox ════[30;46m3:02 PM[0m
+[96;44m║[93;44mn          Name           [96;44m║[93;44m           Name           [96;44m║║[93;44mn          Name           [96;44m║[93;44m           Name           [96;44m║[0m
+[96;44m║[97;46m.. [30;46m╔════════════════════════════════════════════ Help - Far ════════════════════════════════════════════╗[96;44m   ║[0m
+[96;44m║[97;44mexi[30;46m║ [97;46mMake folder[30;46m                                                                                        ║[36;40m  [96;44m ║[0m
+[96;44m║[95;44mbun[30;46m╟────────────────────────────────────────────────────────────────────────────────────────────────────╢[36;40m  [96;44m ║[0m
+[96;44m║exi[30;46m║ This function allows you to create folders. You can use environment variables in the input line,   ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ which are expanded to their values before creating the folder. Also you can create multiple nested ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ subfolders at the same time: simply separate the folder names with the backslash character. For    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ example:                                                                                           ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ [97;46m%USERDOMAIN%\%USERNAME%\Folder3[30;46m                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ The "[97;46mLink Type[30;46m" option allows to choose the link [97;40mtype[30;46m ("[97;46mdirectory junction[30;46m" or "[97;46msymbolic link[30;46m").   ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ If selected, the [97;46mTarget[30;46m field should contain a target directory path.                              ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ If the option "[97;46mProcess multiple names[30;46m" is enabled, it is possible to create multiple folders in a  ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ single operation. In this case, folder names should be separated with the character "[97;46m;[30;46m" or "[97;46m,[30;46m". If ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ the option is enabled and the name of the folder contains a character "[97;46m;[30;46m" (or "[97;46m,[30;46m"), it must be     ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ enclosed in quotes. For example, if the user enters [97;46mC:\Foo1;"E:\foo,2;";D:\foo3[30;46m, folders called    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║ "[97;46mC:\Foo1[30;46m", "[97;46mE:\foo,2;[30;46m" and "[97;46mD:\foo3[30;46m" will be created.                                              ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m║   [30;46m║                                                                                                    ║[36;40m  [96;44m ║[0m
+[96;44m╟───[30;46m║                                                                                                    ║[36;40m──[96;44m─╢[0m
+[96;44m║.. [30;46m║                                                                                                    ║[36;40m:0[96;44m0║[0m
+[96;44m╚═══[30;46m╚════════════════════════════════════════════════════════════════════════════════════════════════════╝[36;40m══[96;44m═╝[0m
+[37;40mC:\Tem[90;40mp\far-mkdir-spec\sandbox>                                                                             [37;40m ↑[0m
+[37;40m1[30;46mHelp   [37;40m 2[30;46m       [37;40m 3[30;46m       [37;40m 4[30;46m       [37;40m 5[30;46mZoom   [37;40m 6[30;46m       [37;40m 7[30;46mSearch [37;40m 8[30;46m       [37;40m 9[30;46m       [37;40m 10[30;46mQuit   [37;40m 11[30;46m       [37;40m 12[30;46m       [0m

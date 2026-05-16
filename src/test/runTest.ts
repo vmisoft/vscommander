@@ -12,8 +12,11 @@ async function main(): Promise<void> {
             extensionDevelopmentPath,
             extensionTestsPath,
             launchArgs: ['--disable-extensions'],
-            // Forward the screenshot-update flag into the extension host.
-            extensionTestsEnv: { UPDATE_SCREENSHOTS: process.env.UPDATE_SCREENSHOTS },
+            // Forward control env vars into the extension host.
+            extensionTestsEnv: {
+                UPDATE_SCREENSHOTS: process.env.UPDATE_SCREENSHOTS,
+                TEST_ONLY: process.env.TEST_ONLY,
+            },
         });
     } catch (err) {
         console.error('Failed to run tests:', err);

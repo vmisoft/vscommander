@@ -15,6 +15,8 @@ Also there is a copy of Midnight Commander source code inside the "../mc" direct
 and replicate the feature EXACTLY.
 - when implementing a file system file-related feature (copy, move, deletion, etc) - think of all possible edge cases (low disk space, different filesystems, different drives for the source and target locations, symlinks, hardlinks, recursive soft- and hardlinks, file system errors, bad blocks, missing access permissions, incorrect file state and opned descriptiors, and much more). Read the Far Manager source code and Midnight commander for reference before thinking on how to implement these features. Ask all the necessary clarifying questions before implementation.
 
+Every feature must go through the **Feature Implementation Workflow** (see Conventions below) — driven by the `far-feature-spec` skill.
+
 
 
 ## Build & Run
@@ -47,6 +49,8 @@ headless VS Code via `@vscode/test-electron` + Mocha.
   `UPDATE_SCREENSHOTS=1 npm test`.
 - Tests validate both the UI (screenshots) and filesystem side effects.
 - Every new feature should get a `nnn - description/` test directory.
+- `TEST_ONLY="<substring>" npm test` runs only the test directories whose name
+  matches — used to run a feature's own tests before the full suite.
 
 Press F5 in VS Code to launch the Extension Development Host. Run "VSCommander: Open Terminal" from the command palette, then Ctrl+O to toggle the panel.
 
@@ -156,6 +160,36 @@ F9 > Options > Save settings. Never auto-persist settings changes.
 ### Workflow
 
 - After each iteration of code changes, run `npm run compile` to check for TypeScript errors before moving on
+
+### Feature Implementation Workflow (MANDATORY)
+
+Every feature that replicates or extends Far Manager follows this workflow:
+
+1. **Spec it.** Invoke the `far-feature-spec` skill
+   (`.claude/skills/far-feature-spec/`). It drives the real Far Manager,
+   captures its behaviour, mines the Far source, and writes
+   `specs/<feature>.md` with reference captures.
+2. **Write the tests first.** Implement the spec's test plan (its
+   section 14) as a `src/test/suite/nnn - <feature>/` test directory — one
+   reference screenshot per distinct visual state, plus filesystem
+   assertions. See the Testing section.
+3. **Implement the feature** per the spec and the architecture rules in
+   "Adding New Features" below.
+4. **Run the feature tests only:** `TEST_ONLY="<feature>" npm test` — iterate
+   until they pass.
+5. **Run the entire suite:** `npm test` — confirm there are no regressions.
+
+Rules:
+
+- **Far is the default source of truth** — replicate it exactly unless an
+  intentional improvement has been decided.
+- **Intentional improvements:** VSCommander sometimes deliberately improves on
+  Far Manager. When it does, the spec MUST describe the improvement and the
+  reason, clearly marked as a deliberate deviation — never a silent
+  divergence.
+- **If the existing implementation differs from the spec:** do NOT silently
+  pick one. Ask which behaviour to implement — replicate Far, keep the current
+  VSCommander behaviour, or adopt a new improvement — before proceeding.
 
 ### Adding New Features
 

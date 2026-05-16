@@ -19,7 +19,13 @@ export async function run(): Promise<void> {
     // Each test lives in a directory named "nnn - description" containing a
     // test.ts and a filesystem/ fixture; the numeric prefix orders the suites.
     const testsRoot = __dirname;
-    const files = (await glob('[0-9]*/test.js', { cwd: testsRoot })).sort();
+    let files = (await glob('[0-9]*/test.js', { cwd: testsRoot })).sort();
+    // TEST_ONLY=<substring> limits the run to matching test directories
+    // (used to run a feature's own tests before the full suite).
+    const only = process.env.TEST_ONLY;
+    if (only) {
+        files = files.filter((f) => f.includes(only));
+    }
     files.forEach((f) => mocha.addFile(path.resolve(testsRoot, f)));
 
     return new Promise<void>((resolve, reject) => {

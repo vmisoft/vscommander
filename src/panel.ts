@@ -9,25 +9,27 @@ import { PanelSettings, TextStyle, matchesKeyBinding, resolveTheme } from './set
 import {
     KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_HOME, KEY_HOME_ALT,
     KEY_END, KEY_END_ALT, KEY_PAGE_UP, KEY_PAGE_DOWN, KEY_TAB, KEY_ENTER,
-    KEY_ESCAPE, KEY_DOUBLE_ESCAPE, KEY_CTRL_F1, MOUSE_SGR_PREFIX, MOUSE_X10_PREFIX,
+    KEY_ESCAPE, KEY_DOUBLE_ESCAPE, KEY_CTRL_F1, KEY_CTRL_A, MOUSE_SGR_PREFIX, MOUSE_X10_PREFIX,
 } from './keys';
 import { Layout, PaneGeometry, SortMode } from './types';
 import { computeLayout, describeFileError } from './helpers';
 import { Pane } from './pane';
-import { Popup, PopupInputResult } from './popup';
-import { SearchPopup } from './searchPopup';
-import { DrivePopup } from './drivePopup';
-import { ConfirmPopup } from './confirmPopup';
-import { MkdirPopup } from './mkdirPopup';
-import { MenuPopup, MenuCommand } from './menuPopup';
-import { CopyMovePopup, CopyMoveMode, CopyMoveResult } from './copyMovePopup';
-import { CopyProgressPopup, ScanProgressPopup, DeleteProgressPopup } from './copyProgressPopup';
-import { OverwritePopup } from './overwritePopup';
-import { ColorEditorPopup } from './colorEditorPopup';
-import { ThemePopup } from './themePopup';
-import { SortPopup, SortPopupResult } from './sortPopup';
-import { HelpPopup } from './helpPopup';
-import { UserMenuPopup, UserMenuCommand } from './userMenuPopup';
+import { Popup, PopupInputResult } from './components/popup';
+import { SearchPopup } from './windows/quick-search';
+import { DrivePopup } from './windows/change-drive';
+import { ConfirmPopup } from './windows/confirm';
+import { MkdirPopup } from './windows/make-directory';
+import { AttrPopup, AttrModel } from './windows/file-attributes';
+import { readAttributes, AttrChange } from './fileOps';
+import { MenuPopup, MenuCommand } from './windows/menu';
+import { CopyMovePopup, CopyMoveMode, CopyMoveResult } from './windows/copy-move';
+import { CopyProgressPopup, ScanProgressPopup, DeleteProgressPopup } from './windows/copy-progress';
+import { OverwritePopup } from './windows/overwrite';
+import { ColorEditorPopup } from './windows/color-editor';
+import { ThemePopup } from './windows/theme';
+import { SortPopup, SortPopupResult } from './windows/sort';
+import { HelpPopup } from './windows/help';
+import { UserMenuPopup, UserMenuCommand } from './windows/user-menu';
 import { UserMenuItem, SubstContext, MenuScope, isCommentLine } from './userMenu';
 import { ColorOverride, ThemeName, applyColorOverrides, themeToOverrides, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS } from './settings';
 import { TerminalBuffer } from './terminalBuffer';
@@ -37,8 +39,8 @@ import { FKeyBar } from './fkeyBar';
 import { CommandLine } from './commandLine';
 import { isArchiveFile } from './archiveFs';
 import { QuickViewPane } from './quickViewPane';
-import { ViewerPopup } from './viewerPopup';
-import { ViewerSearchPopup, ViewerSearchResult } from './viewerSearchPopup';
+import { ViewerPopup } from './windows/viewer';
+import { ViewerSearchPopup, ViewerSearchResult } from './windows/viewer-search';
 
 export type PanelInputResult =
     | { action: 'quit'; data?: string }
@@ -53,6 +55,7 @@ export type PanelInputResult =
     | { action: 'viewFile'; filePath: string; data?: string }
     | { action: 'deleteFile'; filePath: string; toTrash: boolean; data?: string }
     | { action: 'mkdir'; cwd: string; dirName: string; linkType: 'none' | 'symbolic' | 'junction'; linkTarget: string; multipleNames: boolean; data?: string }
+    | { action: 'setAttributes'; targets: string[]; change: AttrChange; recurse: boolean; data?: string }
     | { action: 'copyMove'; result: CopyMoveResult; data?: string }
     | { action: 'changeTheme'; themeName: ThemeName; data?: string }
     | { action: 'saveSettings'; scope: 'user' | 'workspace'; data?: string }
@@ -84,6 +87,7 @@ export class Panel {
     drivePopup: DrivePopup;
     confirmPopup: ConfirmPopup;
     mkdirPopup: MkdirPopup;
+    attrPopup: AttrPopup;
     menuPopup: MenuPopup;
     copyMovePopup: CopyMovePopup;
     copyProgressPopup: CopyProgressPopup;
@@ -131,6 +135,7 @@ export class Panel {
         this.drivePopup = new DrivePopup();
         this.confirmPopup = new ConfirmPopup();
         this.mkdirPopup = new MkdirPopup();
+        this.attrPopup = new AttrPopup();
         this.menuPopup = new MenuPopup();
         this.copyMovePopup = new CopyMovePopup();
         this.copyProgressPopup = new CopyProgressPopup();
@@ -186,7 +191,7 @@ export class Panel {
     }
 
     private syncPopupBounds(): void {
-        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup, this.helpPopup, this.userMenuPopup, this.viewerSearchPopup]) {
+        for (const p of [this.searchPopup, this.drivePopup, this.confirmPopup, this.mkdirPopup, this.attrPopup, this.menuPopup, this.copyMovePopup, this.copyProgressPopup, this.scanProgressPopup, this.deleteProgressPopup, this.overwritePopup, this.colorEditorPopup, this.themePopup, this.sortPopup, this.helpPopup, this.userMenuPopup, this.viewerSearchPopup]) {
             p.termRows = this.rows;
             p.termCols = this.cols;
         }
@@ -214,6 +219,7 @@ export class Panel {
     get hasActivePopup(): boolean {
         return this.searchPopup.active || this.drivePopup.active
             || this.confirmPopup.active || this.mkdirPopup.active
+            || this.attrPopup.active
             || this.menuPopup.active || this.copyMovePopup.active
             || this.copyProgressPopup.active || this.scanProgressPopup.active
             || this.deleteProgressPopup.active || this.overwritePopup.active
@@ -234,6 +240,7 @@ export class Panel {
         if (this.sortPopup.active) return this.sortPopup;
         if (this.copyMovePopup.active) return this.copyMovePopup;
         if (this.mkdirPopup.active) return this.mkdirPopup;
+        if (this.attrPopup.active) return this.attrPopup;
         if (this.drivePopup.active) return this.drivePopup;
         if (this.userMenuPopup.active) return this.userMenuPopup;
         if (this.menuPopup.active) return this.menuPopup;
@@ -299,6 +306,19 @@ export class Panel {
     renderMkdirCursorBlink(): string {
         if (!this.visible || !this.mkdirPopup.active) return '';
         return this.mkdirPopup.renderMkdirBlink(this.rows, this.cols, this.settings.theme);
+    }
+
+    get isAttrBlinkActive(): boolean {
+        return this.attrPopup.active && this.attrPopup.hasBlink;
+    }
+
+    resetAttrBlink(): void {
+        this.attrPopup.resetAttrBlink();
+    }
+
+    renderAttrCursorBlink(): string {
+        if (!this.visible || !this.attrPopup.active) return '';
+        return this.attrPopup.renderAttrBlink(this.rows, this.cols, this.settings.theme);
     }
 
     get isCopyMoveBlinkActive(): boolean {
@@ -536,6 +556,10 @@ export class Panel {
             return this.resolvePopupResult(this.mkdirPopup.handleInput(data));
         }
 
+        if (this.attrPopup.active) {
+            return this.resolvePopupResult(this.attrPopup.handleInput(data));
+        }
+
         if (this.drivePopup.active) {
             return this.resolvePopupResult(this.drivePopup.handleInput(data));
         }
@@ -674,6 +698,11 @@ export class Panel {
                 return this.openArchiveMoveToPopup();
             }
             return this.openCopyMovePopup('move');
+        }
+
+        if (data === KEY_CTRL_A) {
+            this.openAttrPopup();
+            return { action: 'redraw', data: this.render() };
         }
 
         if (matchesKeyBinding(data, this.settings.keys.mkdir)) {
@@ -1776,6 +1805,75 @@ export class Panel {
         });
     }
 
+    // Ctrl+A — open the file attributes dialog for the selected files (or the
+    // cursor entry). Ignored inside archives and on the '..' entry.
+    private openAttrPopup(): void {
+        const pane = this.activePaneObj;
+        if (pane.isInArchive) {
+            return;
+        }
+        const selected = [...pane.selected];
+        let targets: string[];
+        if (selected.length > 0) {
+            targets = selected.map(name => path.join(pane.cwd, name));
+        } else {
+            const entry = pane.entries[pane.cursor];
+            if (!entry || entry.name === '..') {
+                return;
+            }
+            targets = [path.join(pane.cwd, entry.name)];
+        }
+
+        let hasDir = false;
+        let first;
+        try {
+            first = readAttributes(targets[0]);
+            for (const t of targets) {
+                if (readAttributes(t).isDirectory) {
+                    hasDir = true;
+                    break;
+                }
+            }
+        } catch {
+            return; // unreadable target — bail quietly
+        }
+        const base = first;
+        const model: AttrModel = {
+            name: path.basename(targets[0]),
+            count: targets.length,
+            hasDir,
+            mode: base.mode,
+            uid: base.uid,
+            gid: base.gid,
+        };
+        this.attrPopup.openWith(model, this.cols);
+        this.attrPopup.setConfirmAction(() => {
+            const r = this.attrPopup.result;
+            const change: AttrChange = {};
+            if (r.mode !== base.mode) {
+                change.mode = r.mode;
+            }
+            if (r.ownerUid !== undefined && r.ownerUid !== base.uid) {
+                change.uid = r.ownerUid;
+            }
+            if (r.groupGid !== undefined && r.groupGid !== base.gid) {
+                change.gid = r.groupGid;
+            }
+            if (r.mtime instanceof Date) {
+                change.mtime = r.mtime;
+            }
+            if (r.atime instanceof Date) {
+                change.atime = r.atime;
+            }
+            return {
+                action: 'setAttributes',
+                targets,
+                change,
+                recurse: r.recurse,
+            };
+        });
+    }
+
     private openArchiveDeletePopup(): PanelInputResult {
         const pane = this.activePaneObj;
         const entry = pane.entries[pane.cursor];
@@ -2296,6 +2394,9 @@ export class Panel {
         } else if (this.mkdirPopup.active) {
             out.push(this.mkdirPopup.render(this.rows, this.cols, t));
             out.push(this.mkdirPopup.renderShadow(cellAt));
+        } else if (this.attrPopup.active) {
+            out.push(this.attrPopup.render(this.rows, this.cols, t));
+            out.push(this.attrPopup.renderShadow(cellAt));
         } else if (this.drivePopup.active) {
             const targetGeo = this.drivePopup.targetPane === 'left' ? layout.leftPane : layout.rightPane;
             out.push(this.drivePopup.render(layout.listStart, targetGeo.startCol, t, targetGeo.width, layout.listHeight));

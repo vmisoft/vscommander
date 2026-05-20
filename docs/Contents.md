@@ -19,6 +19,7 @@ Your shell session stays intact underneath.
   [Copy Files](CopyFiles.md)
   [Delete Files](DeleteFile.md)
   [Make Directory](MakeFolder.md)
+  [File Attributes](Attributes.md)
   [Menus and Sorting](Menus.md)
   [Command Line](CmdLine.md)
   [Internal Viewer](Viewer.md)

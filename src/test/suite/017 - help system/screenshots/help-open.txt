@@ -10,6 +10,7 @@
 ║          ║    Copy Files                                                              ║          ║
 ║          ║    Delete Files                                                            ║          ║
 ║          ║    Make Directory                                                          ║          ║
+║          ║    File Attributes                                                         ║          ║
 ║          ║    Menus and Sorting                                                       ║          ║
 ║          ║    Command Line                                                            ║          ║
 ║          ║    Internal Viewer                                                         ║          ║
@@ -19,7 +20,6 @@
 ║          ║    Mouse Interactions                                                      ║          ║
 ║          ║                                                                            ║          ║
 ║          ║  [ ] Intercept F1 key to show this window                                  ║          ║
-║          ║                                                                            ║          ║
 ║          ║                                                                            ║          ║
 ║          ║                                                                            ║          ║
 ║          ║                                                                            ║          ║

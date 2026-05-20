@@ -15,6 +15,8 @@ Also there is a copy of Midnight Commander source code inside the "../mc" direct
 and replicate the feature EXACTLY.
 - when implementing a file system file-related feature (copy, move, deletion, etc) - think of all possible edge cases (low disk space, different filesystems, different drives for the source and target locations, symlinks, hardlinks, recursive soft- and hardlinks, file system errors, bad blocks, missing access permissions, incorrect file state and opned descriptiors, and much more). Read the Far Manager source code and Midnight commander for reference before thinking on how to implement these features. Ask all the necessary clarifying questions before implementation.
 
+Your context window will be automatically compacted as it approaches its limit, allowing you to continue working indefinitely from where you left off. Therefore, do not stop tasks early due to token budget concerns. As you approach your token budget limit, save your current progress and state to memory before the context window refreshes. Always be as persistent and autonomous as possible and complete tasks fully, even if the end of your budget is approaching. Never stop and report unfinished tasks: complete everything before stopping work.
+
 Every feature must go through the **Feature Implementation Workflow** (see Conventions below) — driven by the `far-feature-spec` skill.
 
 
@@ -72,7 +74,14 @@ src/
   terminalArea.ts   Terminal buffer rendering in hidden-pane area
   cellQuery.ts      Cell-at-coordinate query for popup shadows — pure function
   pane.ts           Single file-list pane: entries, cursor, selection, rendering
-  *Popup.ts         Popup dialogs (search, drive, confirm, mkdir, copyMove, menu)
+  components/       Generic, window-agnostic UI components (see "Component
+                    Architecture" below): formView, popup, composedPopup,
+                    popupTable, inputControl, checkboxControl, dropdownControl,
+                    buttonGroup, buttonGrid, comboBox, checkboxGrid,
+                    maskedInput, optionList, textBlock, progressBar,
+                    scrollIndicator, colorGrid
+  windows/<name>/   One directory per dialog window; index.ts defines the
+                    window, specialized component files nest alongside it
 ```
 
 Data flow: VS Code terminal ↔ Pseudoterminal (extension.ts) ↔ shell.ts (normal mode) OR panel.ts (panel mode). Toggle switches between alt screen buffer (panel) and main buffer (shell).
@@ -93,7 +102,7 @@ extension.ts (orchestrator)
         ├── terminalArea.ts
         ├── cellQuery.ts
         ├── pane.ts
-        └── *Popup.ts
+        └── windows/<name>/ (each built from components/)
 ```
 
 No new file imports vscode (except extension.ts and directoryInfo.ts which already do).
@@ -161,6 +170,28 @@ F9 > Options > Save settings. Never auto-persist settings changes.
 
 - After each iteration of code changes, run `npm run compile` to check for TypeScript errors before moving on
 
+### Component Architecture (MANDATORY)
+
+Every window is assembled **only** from components — no in-place UI code,
+no ad-hoc one-off components.
+
+- **Strict hierarchy.** A specialized component must be a derivative of a
+  generic component. Example: a `UserDropdown` specialized component derives
+  from the generic `DropdownInput` component, specializing it by filling its
+  default options from `/etc/passwd`. Every component traces, by derivation,
+  down to a generic base component.
+- **No in-place or ad-hoc components.** Every component is a named, reusable
+  class in its own file — never defined inline inside a window.
+- **Generic components** live in `src/components/`. They know nothing about
+  any specific window.
+- **Windows** live in `src/windows/<window-name>/`: an `index.ts` defines the
+  window; its window-specific (specialized) component files nest in the same
+  directory.
+- **Before implementing a feature, search `src/components/` first** — reuse an
+  existing generic component, or derive a specialized one from it.
+- **If a new feature needs new components, discuss the component hierarchy
+  with the user before building it.**
+
 ### Feature Implementation Workflow (MANDATORY)
 
 Every feature that replicates or extends Far Manager follows this workflow:
@@ -200,6 +231,10 @@ Rules:
 5. Shell/PTY concerns go in `shell.ts` or `shellRouter.ts`
 6. Timer patterns use `BlinkTimer`/`PollTimer` from `timerManager.ts`
 7. VS Code API integration goes in `extension.ts`
-8. New files must not import vscode — only `extension.ts` and `directoryInfo.ts` may
-9. Test on multiple platforms or at minimum verify no platform-specific APIs are used without guards
-10. Update `USER.md` with any user-visible changes
+8. Generic UI components go in `src/components/`; a dialog window is a
+   `src/windows/<name>/index.ts` assembled from them — see "Component
+   Architecture". A FormComponent (e.g. `comboBox.ts`, `checkboxGrid.ts`,
+   `maskedInput.ts`) plugs into a `FormView` via `addComponent()`
+9. New files must not import vscode — only `extension.ts` and `directoryInfo.ts` may
+10. Test on multiple platforms or at minimum verify no platform-specific APIs are used without guards
+11. Update `USER.md` with any user-visible changes

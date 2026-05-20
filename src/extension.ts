@@ -10,7 +10,7 @@ import { spawnShell, ShellProxy, WindowsBackend } from './shell';
 import { Panel } from './panel';
 import { PanelSettings, DEFAULT_SETTINGS, DEFAULT_KEY_BINDINGS, mergeSettings, resolveTheme, ThemeName, ColorOverride, applyColorOverrides, THEME_KEYS } from './settings';
 import { BlinkTimer, PollTimer } from './timerManager';
-import { makeDirectories, deleteRecursive, DeleteErrorAction, DeleteErrorCallback, MkdirErrorAction, MkdirErrorCallback } from './fileOps';
+import { makeDirectories, deleteRecursive, DeleteErrorAction, DeleteErrorCallback, MkdirErrorAction, MkdirErrorCallback, applyAttributes, AttrChange, AttrErrorAction, AttrErrorCallback } from './fileOps';
 import { describeFileError } from './helpers';
 import { KEY_F1 } from './keys';
 import { ShellRouter } from './shellRouter';
@@ -137,6 +137,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private blinkTimer = new BlinkTimer(500);
     private cmdBlinkTimer = new BlinkTimer(500);
     private mkdirBlinkTimer = new BlinkTimer(500);
+    private attrBlinkTimer = new BlinkTimer(500);
     private copyMoveBlinkTimer = new BlinkTimer(500);
     private colorEditorBlinkTimer = new BlinkTimer(500);
     private overwriteBlinkTimer = new BlinkTimer(500);
@@ -157,6 +158,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
     private testConfig: TestConfig | undefined;
     private deleteErrorResolve: ((action: DeleteErrorAction) => void) | null = null;
     private mkdirErrorResolve: ((action: MkdirErrorAction) => void) | null = null;
+    private attrErrorResolve: ((action: AttrErrorAction) => void) | null = null;
 
     constructor(cwd: string, extensionPath: string, testConfig?: TestConfig) {
         this.cwd = cwd;
@@ -288,6 +290,7 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
         this.blinkTimer.stop();
         this.cmdBlinkTimer.stop();
         this.mkdirBlinkTimer.stop();
+        this.attrBlinkTimer.stop();
         this.copyMoveBlinkTimer.stop();
         this.colorEditorBlinkTimer.stop();
         this.overwriteBlinkTimer.stop();
@@ -424,6 +427,9 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 case 'mkdir':
                     this.makeDirectory(result.cwd, result.dirName, result.linkType, result.linkTarget, result.multipleNames);
                     break;
+                case 'setAttributes':
+                    this.setAttributes(result.targets, result.change, result.recurse);
+                    break;
                 case 'copyMove':
                     this.copyMoveController.execute(this.panel, result.result, {
                         fire: s => this.writeEmitter.fire(s),
@@ -485,6 +491,11 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 this.mkdirErrorResolve = null;
                 resolve('cancel');
             }
+            if (this.attrErrorResolve && !this.panel.confirmPopup.active) {
+                const resolve = this.attrErrorResolve;
+                this.attrErrorResolve = null;
+                resolve('cancel');
+            }
             if (this.panel.isSearchActive) {
                 this.blinkTimer.restart(
                     () => this.panel!.resetSearchBlink(),
@@ -509,6 +520,15 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
                 () => {
                     if (this.panel?.isMkdirBlinkActive) return this.panel.renderMkdirCursorBlink();
                     this.mkdirBlinkTimer.stop();
+                },
+                s => this.writeEmitter.fire(s),
+            );
+            this.attrBlinkTimer.sync(
+                () => !!this.panel?.isAttrBlinkActive,
+                () => this.panel!.resetAttrBlink(),
+                () => {
+                    if (this.panel?.isAttrBlinkActive) return this.panel.renderAttrCursorBlink();
+                    this.attrBlinkTimer.stop();
                 },
                 s => this.writeEmitter.fire(s),
             );
@@ -1152,6 +1172,37 @@ class VSCommanderTerminal implements vscode.Pseudoterminal {
             if (idx >= 0) {
                 pane.cursor = idx;
             }
+            this.writeEmitter.fire(this.panel.redraw());
+        }
+    }
+
+    private async setAttributes(targets: string[], change: AttrChange, recurse: boolean): Promise<void> {
+        const onError: AttrErrorCallback = async (filePath, error) => {
+            return new Promise<AttrErrorAction>((resolve) => {
+                if (!this.panel) { resolve('cancel'); return; }
+                this.attrErrorResolve = resolve;
+                const info = describeFileError(error);
+                this.panel.confirmPopup.openWith({
+                    title: info.title,
+                    bodyLines: [info.message, filePath],
+                    buttons: ['Retry', 'Skip', 'Cancel'],
+                    warning: true,
+                    onConfirm: (btnIdx) => {
+                        this.attrErrorResolve = null;
+                        resolve(btnIdx === 0 ? 'retry' : btnIdx === 1 ? 'skip' : 'cancel');
+                    },
+                });
+                this.writeEmitter.fire(this.panel.redraw());
+            });
+        };
+
+        try {
+            await applyAttributes(targets, change, recurse, onError);
+        } catch {
+            // attr_cancelled — stop and refresh
+        }
+        this.refreshPanels();
+        if (this.panel) {
             this.writeEmitter.fire(this.panel.redraw());
         }
     }

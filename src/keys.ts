@@ -23,6 +23,7 @@ export const KEY_BACKSPACE_ALT = '\x08';
 export const KEY_INSERT = '\x1b[2~';
 
 // Control characters
+export const KEY_CTRL_A = '\x01';
 export const KEY_CTRL_C = '\x03';
 export const KEY_CTRL_H = '\x08';
 export const KEY_CTRL_P = '\x10';

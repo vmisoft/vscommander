@@ -844,3 +844,118 @@ async function deleteContentsRecursive(
         }
     }
 }
+
+// --- file attributes (Ctrl+A) ----------------------------------------------
+
+export interface FileAttributes {
+    mode: number;        // permission bits, mode & 0o7777
+    uid: number;
+    gid: number;
+    mtime: Date;
+    atime: Date;
+    isDirectory: boolean;
+}
+
+export interface AttrChange {
+    mode?: number;
+    uid?: number;
+    gid?: number;
+    mtime?: Date;
+    atime?: Date;
+}
+
+export type AttrErrorAction = 'retry' | 'skip' | 'cancel';
+export type AttrErrorCallback =
+    (filePath: string, error: Error) => Promise<AttrErrorAction>;
+
+// Read the current POSIX attributes of a file or directory (follows symlinks).
+export function readAttributes(p: string): FileAttributes {
+    const st = fs.statSync(p);
+    return {
+        mode: st.mode & 0o7777,
+        uid: st.uid,
+        gid: st.gid,
+        mtime: st.mtime,
+        atime: st.atime,
+        isDirectory: st.isDirectory(),
+    };
+}
+
+// Apply the changed attribute fields to every target. When `recurse` is set,
+// a directory target has the change applied to its whole subtree. Each failed
+// entry is routed through `onError` (Retry / Skip / Cancel).
+export async function applyAttributes(
+    targets: string[], change: AttrChange, recurse: boolean,
+    onError?: AttrErrorCallback,
+): Promise<void> {
+    const applyOne = async (p: string): Promise<void> => {
+        for (;;) {
+            try {
+                if (change.mode !== undefined) {
+                    fs.chmodSync(p, change.mode);
+                }
+                if (change.uid !== undefined || change.gid !== undefined) {
+                    const st = fs.statSync(p);
+                    fs.chownSync(p, change.uid ?? st.uid, change.gid ?? st.gid);
+                }
+                if (change.mtime !== undefined || change.atime !== undefined) {
+                    const st = fs.statSync(p);
+                    fs.utimesSync(p, change.atime ?? st.atime, change.mtime ?? st.mtime);
+                }
+                return;
+            } catch (e) {
+                const err = e instanceof Error ? e : new Error(String(e));
+                const action = onError ? await onError(p, err) : 'cancel';
+                if (action === 'retry') continue;
+                if (action === 'skip') return;
+                throw 'attr_cancelled';
+            }
+        }
+    };
+    const walk = async (p: string): Promise<void> => {
+        await applyOne(p);
+        if (!recurse) return;
+        let st: fs.Stats;
+        try {
+            st = fs.statSync(p);
+        } catch {
+            return;
+        }
+        if (st.isDirectory()) {
+            for (const entry of fs.readdirSync(p)) {
+                await walk(path.join(p, entry));
+            }
+        }
+    };
+    for (const t of targets) {
+        await walk(t);
+    }
+}
+
+// Read an /etc/passwd- or /etc/group-style file into a name -> id map.
+// Returns an empty map when the file is absent (e.g. on Windows).
+function readIdMap(file: string): Map<string, number> {
+    const map = new Map<string, number>();
+    try {
+        for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+            const parts = line.split(':');
+            if (parts.length >= 3 && parts[0]) {
+                const id = parseInt(parts[2], 10);
+                if (!isNaN(id) && !map.has(parts[0])) {
+                    map.set(parts[0], id);
+                }
+            }
+        }
+    } catch {
+        // file not present — no names available, dialog falls back to numeric
+    }
+    return map;
+}
+
+export function readUserMap(): Map<string, number> {
+    return readIdMap('/etc/passwd');
+}
+
+export function readGroupMap(): Map<string, number> {
+    return readIdMap('/etc/group');
+}

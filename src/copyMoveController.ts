@@ -1,10 +1,10 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { Panel } from './panel';
-import { CopyMoveResult } from './copyMovePopup';
+import { CopyMoveResult } from './windows/copy-move';
 import { copyMoveOne, scanFiles, CopyErrorAction, CopyActionError, CopySpeedTracker, ByteProgressCallback, SymlinkPolicy, SymlinkAskCallback, OverwriteResult } from './fileOps';
 import { describeFileError } from './helpers';
-import { OverwriteChoice, OverwriteInfo, OverwritePopupResult } from './overwritePopup';
+import { OverwriteChoice, OverwriteInfo, OverwritePopupResult } from './windows/overwrite';
 
 export interface CopyMoveHost {
     fire(data: string): void;

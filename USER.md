@@ -76,6 +76,7 @@ All panel shortcuts below show their default key bindings. Every action can be r
 | `Shift+F8` | Permanently delete selected file or directory (bypasses Recycle Bin / Trash on all platforms) |
 | `F9` | Open top menu bar (Left / Files / Commands / Options / Right) |
 | `F10` | Quit VSCommander (with confirmation) |
+| `Ctrl+A` | Open the File Attributes dialog for the selected file(s) |
 | `Ctrl+H` | Toggle dotfile (hidden file) visibility |
 | `Ctrl+P` | Toggle visibility of inactive pane (shows terminal beneath) |
 | `Ctrl+Q` | Quick View -- preview file or directory under cursor in the inactive pane |
@@ -263,6 +264,32 @@ Navigation within the dialog:
 | Arrow keys | Navigate within input fields (Left/Right) or cycle dropdown options |
 
 After confirming, the directory is created and the cursor moves to the newly created entry. Both panes are refreshed to reflect the change.
+
+## File Attributes (Ctrl+A)
+
+Press `Ctrl+A` to open the File Attributes dialog. It acts on the selected
+file(s), or on the file under the cursor when nothing is selected.
+
+The dialog is platform-adaptive. On Linux, macOS and FreeBSD it edits POSIX
+attributes:
+
+- **Permissions**: an `rwx` checkbox grid for Owner, Group and Other, plus a
+  Special row (setuid, setgid, sticky). Move with the arrow keys and toggle a
+  cell with `Space`; the octal mode is shown live below the grid.
+- **Owner** and **Group**: a name field. When `/etc/passwd` and `/etc/group`
+  are available it carries a `[v]` dropdown of known names (cycle with
+  `Up`/`Down`); a numeric uid/gid is also accepted.
+- **Change modified time** / **Change accessed time**: each timestamp is
+  opt-in -- tick its checkbox to enable a masked `YYYY-MM-DD hh:mm:ss` field
+  (digits only). An impossible date shows `(invalid)` and blocks **Set**.
+  Left unticked, the timestamp is untouched.
+- **Apply changes to directory contents**: shown when a directory is among the
+  targets; ticking it applies every change recursively.
+
+Only the fields you actually change are written -- all other attributes are
+left untouched. Press `Enter` (the **Set** button) to apply, or `Escape` to
+cancel. If a change fails (for example, permission denied when you are not the
+file's owner), an error dialog offers **Retry**, **Skip**, or **Cancel**.
 
 ## Top Menu Bar (F9)
 

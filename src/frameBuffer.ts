@@ -80,15 +80,41 @@ export class FrameBuffer {
     }
 
     toAnsi(screenRow: number, screenCol: number): string {
-        const sorted = [...this.ops].sort((a, b) => {
-            if (a.row !== b.row) return a.row - b.row;
-            return a.col - b.col;
-        });
+        // Composite the draw ops cell-by-cell: a later op wins over an earlier
+        // one on any cell they share. This makes overlays (e.g. an open
+        // dropdown list) cleanly cover whatever they are drawn on top of,
+        // regardless of column order.
+        const grid: ({ ch: string; style: TextStyle } | undefined)[][] =
+            Array.from({ length: this.height }, () => new Array(this.width).fill(undefined));
+        for (const op of this.ops) {
+            if (op.row < 0 || op.row >= this.height) continue;
+            for (let i = 0; i < op.text.length; i++) {
+                const c = op.col + i;
+                if (c < 0 || c >= this.width) continue;
+                grid[op.row][c] = { ch: op.text[i], style: op.style };
+            }
+        }
+
+        // Emit each row as runs of cells sharing the same style; unwritten
+        // cells stay transparent (whatever is already on screen shows).
         const out: string[] = [];
-        for (const op of sorted) {
-            out.push(moveTo(screenRow + op.row, screenCol + op.col));
-            out.push(applyStyle(op.style));
-            out.push(op.text);
+        for (let r = 0; r < this.height; r++) {
+            let c = 0;
+            while (c < this.width) {
+                const cell = grid[r][c];
+                if (!cell) { c++; continue; }
+                const styleStr = applyStyle(cell.style);
+                let text = cell.ch;
+                let end = c + 1;
+                while (end < this.width) {
+                    const next = grid[r][end];
+                    if (!next || applyStyle(next.style) !== styleStr) break;
+                    text += next.ch;
+                    end++;
+                }
+                out.push(moveTo(screenRow + r, screenCol + c) + styleStr + text);
+                c = end;
+            }
         }
         out.push(resetStyle() + hideCursor());
         return out.join('');
